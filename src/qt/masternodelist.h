@@ -36,7 +36,6 @@ public:
         COLUMN_STATUS,
         COLUMN_LASTSEEN,
         COLUMN_LASTPAID,
-        COLUMN_BANSCORE,
         COLUMN_PAYOUT_ADDRESS,
         COLUMN_OUTPOINT,
     };

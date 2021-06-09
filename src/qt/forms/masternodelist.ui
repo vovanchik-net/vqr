@@ -136,11 +136,6 @@
          </column>
          <column>
           <property name="text">
-           <string>Ban</string>
-          </property>
-         </column>
-         <column>
-          <property name="text">
            <string>Payout Address</string>
           </property>
          </column>

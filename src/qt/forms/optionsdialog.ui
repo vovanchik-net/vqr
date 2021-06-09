@@ -226,6 +226,20 @@
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QCheckBox" name="saveChangeAddress">
+            <property name="text">
+             <string>&amp;Save Change Address</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="saveAddressForPoS">
+            <property name="text">
+             <string>&amp;Save Address for PoS</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>

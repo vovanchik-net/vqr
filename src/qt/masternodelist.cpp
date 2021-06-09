@@ -29,19 +29,17 @@ MasternodeList::MasternodeList (QWidget* parent) : QWidget(parent), ui(new Ui::M
 //    GUIUtil::setFont({ui->label_count_2, ui->countLabel}, GUIUtil::FontWeight::Bold, 14);
 //    GUIUtil::setFont({ui->label_filter_2}, GUIUtil::FontWeight::Normal, 15);
 
-    int columnAddressWidth = 100;
-    int columnStatusWidth = 75;
-    int columnLastSeenWidth = 120;
-    int columnLastPaidWidth = 120;
-    int columnBanScoreWidth = 30;
-    int columnPayeeWidth = 200;
-    int columnOutpointWidth = 400;
+    int columnAddressWidth = 120;
+    int columnStatusWidth = 70;
+    int columnLastSeenWidth = 100;
+    int columnLastPaidWidth = 100;
+    int columnPayeeWidth = 270;
+    int columnOutpointWidth = 420;
 
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_SERVICE, columnAddressWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_STATUS, columnStatusWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_LASTSEEN, columnLastSeenWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_LASTPAID, columnLastPaidWidth);
-    ui->tableWidgetMasternodes->setColumnWidth(COLUMN_BANSCORE, columnBanScoreWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_PAYOUT_ADDRESS, columnPayeeWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_OUTPOINT, columnOutpointWidth);
     ui->tableWidgetMasternodes->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -141,7 +139,6 @@ void MasternodeList::updateList () {
         QTableWidgetItem* statusItem = new QTableWidgetItem (QString::fromStdString (it.second.GetStateString()));
         QTableWidgetItem* lastSeenItem = new QTableWidgetItem(QString::fromStdString(EasyFormatDateTime(it.second.lastPing.sigTime)));
         QTableWidgetItem* lastPaidItem = new QTableWidgetItem(QString::fromStdString(EasyFormatDateTime(it.second.nTimeLastPaid)));     
-        QTableWidgetItem* banScoreItem = new QTableWidgetItem(QString::number(it.second.nPoSeBanScore));     
         QTableWidgetItem* payeeItem = new QTableWidgetItem(QString::fromStdString(EncodeDestination(
             it.second.pubKeyCollateralAddress.GetID())));
         QTableWidgetItem* outpointItem = new QTableWidgetItem (QString::fromStdString (
@@ -152,7 +149,6 @@ void MasternodeList::updateList () {
                           statusItem->text() + " " +
                           lastSeenItem->text() + " " +
                           lastPaidItem->text() + " " +
-                          banScoreItem->text() + " " +
                           payeeItem->text() + " " +
                           outpointItem->text();
             if (!strToFilter.contains(strCurrentFilter)) return;
@@ -163,7 +159,6 @@ void MasternodeList::updateList () {
         ui->tableWidgetMasternodes->setItem(0, COLUMN_STATUS, statusItem);
         ui->tableWidgetMasternodes->setItem(0, COLUMN_LASTSEEN, lastSeenItem);
         ui->tableWidgetMasternodes->setItem(0, COLUMN_LASTPAID, lastPaidItem);
-        ui->tableWidgetMasternodes->setItem(0, COLUMN_BANSCORE, banScoreItem);
         ui->tableWidgetMasternodes->setItem(0, COLUMN_PAYOUT_ADDRESS, payeeItem);
         ui->tableWidgetMasternodes->setItem(0, COLUMN_OUTPOINT, outpointItem);
     };

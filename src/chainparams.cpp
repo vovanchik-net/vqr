@@ -184,7 +184,11 @@ public:
                uint256S("0x43f4af08ec6c49709828c670e1fee467ba3b179c5f1a896defc4ec99ed50d305")); 
 
         vSeeds.clear();
+        vSeeds.emplace_back("seed.vovanchik.net");
+        vSeeds.emplace_back("seed1.vovanchik.net");
+        vSeeds.emplace_back("seed2.vovanchik.net");
         vFixedSeeds.clear();
+        vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_test, pnSeed6_test + ARRAYLEN(pnSeed6_test));
 
         base58Prefixes[PUBKEY_ADDRESS] = {0x0e, 0xe5};
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 196);

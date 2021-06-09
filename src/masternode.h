@@ -264,6 +264,7 @@ public:
 
     int GetLastPaidTime() const { return nTimeLastPaid; }
     int GetLastPaidBlock() const { return nBlockLastPaid; }
+    CScript GetPayScript () const { return GetScriptForDestination(pubKeyCollateralAddress.GetID()); }
     void UpdateLastPaid(const CBlockIndex *pindex, int nMaxBlocksToScanBack);
 
     // KEEP TRACK OF EACH GOVERNANCE ITEM INCASE THIS NODE GOES OFFLINE, SO WE CAN RECALC THEIR STATUS
@@ -828,6 +829,18 @@ public:
     CMasternodeBase FindRandomNotInVec(const std::vector<COutPoint> &vecToExclude, int nProtocolVersion = -1);
 
     std::map<COutPoint, CMasternode> GetFullMasternodeMap() { return mapMasternodes; }
+
+    void ForEach (std::function<bool(CMasternode& mn)> func) {
+        LOCK(cs);
+        for (auto& it : mapMasternodes) 
+            if (!func(it.second)) return;
+    }
+
+    void ForEachConst (std::function<bool(const CMasternode& mn)> func) const {
+        LOCK(cs);
+        for (const auto& it : mapMasternodes) 
+            if (!func(it.second)) return;
+    }
 
     bool GetMasternodeRanks(rank_pair_vec_t& vecMasternodeRanksRet, int nBlockHeight = -1, int nMinProtocol = 0);
     bool GetMasternodeRank(const COutPoint &outpoint, int& nRankRet, int nBlockHeight = -1, int nMinProtocol = 0);

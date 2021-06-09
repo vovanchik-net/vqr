@@ -3173,7 +3173,7 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
                 cachedCoins.erase (pcoin.outpoint.hash);      // erase from cache
                 
                 CScript scriptPubKeyOut;
-                if (gArgs.GetBoolArg("-stakerepeataddr", true)) {
+                if (gArgs.GetBoolArg("-stakerepeataddr", false)) {
                     scriptPubKeyOut = pcoin.txout.scriptPubKey;
                 } else {
                     CPubKey vchPubKey;
@@ -3213,7 +3213,7 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
         CCoinsViewCache view(pcoinsTip.get());
         if (!GetCoinAge(txNew, view, nCoinAge, header.nTime, consensus))
             return error("CreateCoinStake : failed to calculate coin age");
-        nPosReward = GetProofOfStakeReward(nCoinAge, chainActive.Height(), consensus);
+        nPosReward = GetProofOfStakeReward(nCoinAge, chainActive.Height()+1, consensus);
     }
 
     CFeeRate minFeeRate = CFeeRate(DEFAULT_TRANSACTION_MINFEE);

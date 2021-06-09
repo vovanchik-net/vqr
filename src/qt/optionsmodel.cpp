@@ -117,6 +117,12 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("bSpendZeroConfChange", true);
     if (!m_node.softSetBoolArg("-spendzeroconfchange", settings.value("bSpendZeroConfChange").toBool()))
         addOverriddenOption("-spendzeroconfchange");
+    if (!settings.contains("bsaveAddressForPoS"))
+        settings.setValue("bsaveAddressForPoS", false);
+    if (!settings.contains("bsaveChangeAddress"))
+        settings.setValue("bsaveChangeAddress", false);
+    if (!m_node.softSetBoolArg("-stakerepeataddr", settings.value("bsaveAddressForPoS").toBool()))
+        addOverriddenOption("-stakerepeataddr");
 #endif
 
     // Network
@@ -282,6 +288,10 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
 #ifdef ENABLE_WALLET
         case SpendZeroConfChange:
             return settings.value("bSpendZeroConfChange");
+        case saveAddressForPoS:
+            return settings.value("bsaveAddressForPoS");
+        case saveChangeAddress:
+            return settings.value("bsaveChangeAddress");
 #endif
         case DisplayUnit:
             return nDisplayUnit;
@@ -395,6 +405,16 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             if (settings.value("bSpendZeroConfChange") != value) {
                 settings.setValue("bSpendZeroConfChange", value);
                 setRestartRequired(true);
+            }
+            break;
+        case saveAddressForPoS:
+            if (settings.value("bsaveAddressForPoS") != value) {
+                settings.setValue("bsaveAddressForPoS", value);
+            }
+            break;
+        case saveChangeAddress:
+            if (settings.value("bsaveChangeAddress") != value) {
+                settings.setValue("bsaveChangeAddress", value);
             }
             break;
 #endif

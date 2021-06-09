@@ -210,6 +210,8 @@ void OptionsDialog::setMapper()
     /* Wallet */
     mapper->addMapping(ui->spendZeroConfChange, OptionsModel::SpendZeroConfChange);
     mapper->addMapping(ui->coinControlFeatures, OptionsModel::CoinControlFeatures);
+    mapper->addMapping(ui->saveChangeAddress, OptionsModel::saveChangeAddress);
+    mapper->addMapping(ui->saveAddressForPoS, OptionsModel::saveAddressForPoS);
 
     /* Network */
     mapper->addMapping(ui->mapPortUpnp, OptionsModel::MapPortUPnP);

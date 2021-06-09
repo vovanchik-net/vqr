@@ -1266,7 +1266,7 @@ bool CMasternodeBlockPayees::GetBestPayee(CScript& payeeRet) const
         }
     }
 
-    return (nVotes > -1);
+    return (nVotes > -1); // return (nVotes > 2);
 }
 
 bool CMasternodeBlockPayees::HasPayeeWithVotes(const CScript& payeeIn, int nVotesReq) const
@@ -3823,13 +3823,36 @@ void CMasternodeMan::SetMasternodeLastPing(const COutPoint& outpoint, const CMas
 void CMasternodeMan::UpdatedBlockTip(const CBlockIndex *pindex)
 {
     nCachedBlockHeight = pindex->nHeight;
+    uint32_t tim = pindex->nTime;
+    int heig = nCachedBlockHeight;
     LogPrint(BCLog::MN, "CMasternodeMan::UpdatedBlockTip -- nCachedBlockHeight=%d\n", nCachedBlockHeight);
 
     CheckSameAddr();
 
-    if(fMasternodeMode) {
+//    if(fMasternodeMode) {
         // normal wallet does not need to update this every block, doing update on rpc call should be enough
-        UpdateLastPaid(pindex);
+//        UpdateLastPaid(pindex);
+//    }
+
+    // update payment info
+    if (masternodeSync.IsSynced()) {
+        CBlock block;
+        if (!ReadBlockFromDisk(block, pindex, Params().GetConsensus())) return;
+        CAmount nMasternodePayment = (block.vtx[0]->GetValueOut() * Params().GetConsensus().nMasternodePaymentsPercent) / 100;
+        for (const auto& txout : block.vtx[0]->vout) {
+            if (nMasternodePayment == txout.nValue) {
+                ForEach([txout, tim, heig](CMasternode& mn) {
+                    if (mn.GetPayScript() == txout.scriptPubKey) {
+                        mn.nBlockLastPaid = heig;
+                        mn.nTimeLastPaid = tim;
+                        LogPrint(BCLog::MN, "Masternode: found payment to %s in height %d\n", 
+                                    mn.outpoint.ToString(), mn.nBlockLastPaid);
+                        return false;
+                    }
+                    return true;
+                });
+            }
+        }
     }
 }
 

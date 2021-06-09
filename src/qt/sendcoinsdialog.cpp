@@ -117,11 +117,14 @@ SendCoinsDialog::SendCoinsDialog(const PlatformStyle *_platformStyle, QWidget *p
         settings.setValue("nTransactionFee", (qint64)DEFAULT_PAY_TX_FEE);
     if (!settings.contains("fPayOnlyMinFee"))
         settings.setValue("fPayOnlyMinFee", false);
-    if (settings.contains("sCoinControlChange")) {
+    if (!settings.contains("bsaveChangeAddress"))
+        settings.setValue("bsaveChangeAddress", false);
+    if (settings.value("bsaveChangeAddress").toBool() && settings.contains("sCoinControlChange")) {
         ui->checkBoxCoinControlChange->setChecked(true);
         ui->lineEditCoinControlChange->setText(settings.value("sCoinControlChange").toString());
+        CoinControlDialog::coinControl()->destChange = 
+            DecodeDestination(settings.value("sCoinControlChange").toString().toStdString());
     }
-
     ui->groupFee->setId(ui->radioSmartFee, 0);
     ui->groupFee->setId(ui->radioCustomFee, 1);
     ui->customFee->setValue(settings.value("nTransactionFee").toLongLong());
@@ -213,7 +216,7 @@ SendCoinsDialog::~SendCoinsDialog()
     settings.setValue("nConfTarget", getConfTargetForIndex(ui->confTargetSelector->currentIndex()));
     settings.setValue("nTransactionFee", (qint64)ui->customFee->value());
     settings.setValue("fPayOnlyMinFee", ui->checkBoxMinimumFee->isChecked());
-    if (ui->checkBoxCoinControlChange->isChecked()) {
+    if (settings.value("bsaveChangeAddress").toBool() && ui->checkBoxCoinControlChange->isChecked()) {
         settings.setValue("sCoinControlChange", ui->lineEditCoinControlChange->text());
     } else settings.remove("sCoinControlChange");
     delete ui;
@@ -387,8 +390,11 @@ void SendCoinsDialog::clear()
 {
     // Clear coin control settings
     CoinControlDialog::coinControl()->UnSelectAll();
-//    ui->checkBoxCoinControlChange->setChecked(false);
-//    ui->lineEditCoinControlChange->clear();
+    QSettings settings;
+    if (!settings.value("bsaveChangeAddress").toBool()) {
+        ui->checkBoxCoinControlChange->setChecked(false);
+        ui->lineEditCoinControlChange->clear();
+    }
     coinControlUpdateLabels();
 
     // Remove entries until only one left

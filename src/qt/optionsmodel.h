@@ -55,6 +55,8 @@ public:
         DatabaseCache,          // int
         SpendZeroConfChange,    // bool
         Listen,                 // bool
+        saveChangeAddress,      // bool
+        saveAddressForPoS,      // bool
         OptionIDRowCount,
     };
 
