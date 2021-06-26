@@ -240,6 +240,45 @@
     </message>
 </context>
 <context>
+    <name>MasternodeList</name>
+    <message>
+        <source>Please wait...</source>
+        <translation>Ждите...</translation>
+    </message>
+    <message>
+        <source>Updating...</source>
+        <translation>Обновляем...</translation>
+    </message>
+    <message>
+        <source>Node Count:</source>
+        <translation>Количество мастернод</translation>
+    </message>
+    <message>
+        <source>Service</source>
+        <translation>Адрес</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation>Состояние</translation>
+    </message>
+    <message>
+        <source>LastSeen</source>
+        <translation>Видимость</translation>
+    </message>
+    <message>
+        <source>LastPaid</source>
+        <translation>Платежи</translation>
+    </message>
+    <message>
+        <source>Payout Address</source>
+        <translation>Адрес для оплаты</translation>
+    </message>
+    <message>
+        <source>Outpoint</source>
+        <translation>ID Монеты</translation>
+    </message>
+</context>
+<context>
     <name>BitcoinGUI</name>
     <message>
         <source>Sign &amp;message...</source>
@@ -312,6 +351,30 @@
     <message>
         <source>&amp;Change Passphrase...</source>
         <translation>&amp;Изменить пароль...</translation>
+    </message>
+    <message>
+        <source>&amp;Lock Wallet</source>
+        <translation>&amp;Заблокировать кошелек</translation>
+    </message>
+    <message>
+        <source>Lock Wallet</source>
+        <translation>Заблокировать кошелек</translation>
+    </message>
+    <message>
+        <source>&amp;Unlock Wallet</source>
+        <translation>&amp;Разблокировать кошелек</translation>
+    </message>
+    <message>
+        <source>Unlock Wallet</source>
+        <translation>Разблокировать кошелек</translation>
+    </message>
+    <message>
+        <source>&amp;Unlock Wallet for PoS</source>
+        <translation>&amp;Разблокировать кошелек для POS</translation>
+    </message>
+    <message>
+        <source>Unlock Wallet for PoS</source>
+        <translation>Разблокировать кошелек для POS</translation>
     </message>
     <message>
         <source>&amp;Sending addresses...</source>
@@ -396,6 +459,10 @@
     <message>
         <source>&amp;Receive</source>
         <translation>&amp;Получить</translation>
+    </message>
+    <message>
+        <source>&amp;Masternodes</source>
+        <translation>&amp;Список мастернод</translation>
     </message>
     <message>
         <source>&amp;Show / Hide</source>

@@ -46,7 +46,6 @@ AskPassphraseDialog::AskPassphraseDialog(Mode _mode, QWidget *parent) :
             ui->warningLabel->setText(tr("Enter the new passphrase to the wallet.<br/>Please use a passphrase of <b>ten or more random characters</b>, or <b>eight or more words</b>."));
             ui->passLabel1->hide();
             ui->passEdit1->hide();
-            ui->onlyPoS->hide();
             setWindowTitle(tr("Encrypt wallet"));
             break;
         case Unlock: // Ask passphrase
@@ -55,7 +54,6 @@ AskPassphraseDialog::AskPassphraseDialog(Mode _mode, QWidget *parent) :
             ui->passEdit2->hide();
             ui->passLabel3->hide();
             ui->passEdit3->hide();
-            ui->onlyPoS->hide();
             setWindowTitle(tr("Unlock wallet"));
             break;
         case PosUnlock: // Ask passphrase
@@ -64,8 +62,7 @@ AskPassphraseDialog::AskPassphraseDialog(Mode _mode, QWidget *parent) :
             ui->passEdit2->hide();
             ui->passLabel3->hide();
             ui->passEdit3->hide();
-            ui->onlyPoS->setChecked(true);
-            setWindowTitle(tr("Unlock wallet"));
+            setWindowTitle(tr("Unlock wallet for PoS"));
             break;
         case Decrypt:   // Ask passphrase
             ui->warningLabel->setText(tr("This operation needs your wallet passphrase to decrypt the wallet."));
@@ -73,13 +70,11 @@ AskPassphraseDialog::AskPassphraseDialog(Mode _mode, QWidget *parent) :
             ui->passEdit2->hide();
             ui->passLabel3->hide();
             ui->passEdit3->hide();
-            ui->onlyPoS->hide();
             setWindowTitle(tr("Decrypt wallet"));
             break;
         case ChangePass: // Ask old passphrase + new passphrase x2
             setWindowTitle(tr("Change passphrase"));
             ui->warningLabel->setText(tr("Enter the old passphrase and new passphrase to the wallet."));
-            ui->onlyPoS->hide();
             break;
     }
     textChanged();
@@ -176,13 +171,7 @@ void AskPassphraseDialog::accept()
         }
         break;
     case PosUnlock: // Ask passphrase
-        bool rslt;
-        if (ui->onlyPoS->isChecked()) {
-            rslt = model->setWalletLockedPos(false, oldpass);
-        } else {
-            rslt = model->setWalletLocked(false, oldpass);
-        }
-        if(!rslt)
+        if(!model->setWalletLockedPos(false, oldpass))
         {
             QMessageBox::critical(this, tr("Wallet unlock failed"),
                                   tr("The passphrase entered for the wallet decryption was incorrect."));

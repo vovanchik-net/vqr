@@ -436,8 +436,8 @@ bool CMasternodeBroadcast::Create(const std::string& strService, const std::stri
     CService service;
     if (!Lookup(strService.c_str(), service, 0, false))
         return Log(strprintf("Invalid address %s for masternode.", strService));
-//    if (service.GetPort() != Params().GetDefaultPort())
-//        return Log(strprintf("Invalid port %u for masternode %s", service.GetPort(), strService));
+    if (service.GetPort() != Params().GetDefaultPort())
+        return Log(strprintf("Invalid port %u for masternode %s", service.GetPort(), strService));
 
     return Create(cd.getOut(), service, keyCollateralAddressNew, pubKeyCollateralAddressNew, keyMasternodeNew, pubKeyMasternodeNew, strErrorRet, mnbRet);
 }
@@ -519,7 +519,7 @@ bool CMasternodeBroadcast::SimpleCheck(int& nDos)
         return false;
     }
 
-//    if(addr.GetPort() != Params().GetDefaultPort()) return false;
+    if(addr.GetPort() != Params().GetDefaultPort()) return false;
 
     return true;
 }
@@ -1266,7 +1266,7 @@ bool CMasternodeBlockPayees::GetBestPayee(CScript& payeeRet) const
         }
     }
 
-    return (nVotes > -1); // return (nVotes > 2);
+    return nVotes >= MNPAYMENTS_SIGNATURES_REQUIRED; //(nVotes > -1); ?????????????
 }
 
 bool CMasternodeBlockPayees::HasPayeeWithVotes(const CScript& payeeIn, int nVotesReq) const

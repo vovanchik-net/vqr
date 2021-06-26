@@ -179,6 +179,12 @@ bool CCryptoKeyStore::Lock(bool fAllowPosOnly)
 
 bool CCryptoKeyStore::Unlock(const CKeyingMaterial& vMasterKeyIn, bool fAllowPosOnly)
 {
+    if (!vMasterKey.empty() && (!fOnlyPosAllowed) && fAllowPosOnly) {
+        fOnlyPosAllowed = true;
+        NotifyStatusChanged(this);
+        return true;
+    }
+
     {
         LOCK(cs_KeyStore);
         if (!SetCrypted())

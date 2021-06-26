@@ -422,7 +422,7 @@ public:
 
 class CMasternodePaymentVote;
 
-static const int MNPAYMENTS_SIGNATURES_REQUIRED         = 6;
+static const int MNPAYMENTS_SIGNATURES_REQUIRED         = 3;
 static const int MNPAYMENTS_SIGNATURES_TOTAL            = 10;
 
 extern CCriticalSection cs_vecPayees;

@@ -95,6 +95,7 @@ private:
 
     UnitDisplayStatusBarControl* unitDisplayControl = nullptr;
     QLabel* labelWalletEncryptionIcon = nullptr;
+    QLabel* labelWalletEncryptionIcon2 = nullptr;
     QLabel* labelWalletHDStatusIcon = nullptr;
     QLabel* labelProxyIcon = nullptr;
     QLabel* connectionsControl = nullptr;
@@ -126,6 +127,7 @@ private:
     QAction* changePassphraseAction = nullptr;
     QAction *lockWalletAction = nullptr;
     QAction *unlockWalletAction = nullptr;
+    QAction *unlockPosWalletAction = nullptr;
     QAction* aboutQtAction = nullptr;
     QAction* openRPCConsoleAction = nullptr;
     QAction* openAction = nullptr;

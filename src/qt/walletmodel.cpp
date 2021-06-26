@@ -291,13 +291,13 @@ WalletModel::EncryptionStatus WalletModel::getEncryptionStatus() const
     {
         return Unencrypted;
     }
-    else if (!m_wallet->isLocked_pos())
-    {
-        return UnlockedPos;
-    }
     else if (!m_wallet->isLocked())
     {
         return Unlocked;
+    }
+    else if (!m_wallet->isLocked_pos())
+    {
+        return UnlockedPos;
     }
     else
     {
@@ -429,7 +429,8 @@ void WalletModel::unsubscribeFromCoreSignals()
 // WalletModel::UnlockContext implementation
 WalletModel::UnlockContext WalletModel::requestUnlock()
 {
-    bool was_locked = getEncryptionStatus() == Locked;
+    bool posonly = getEncryptionStatus() == UnlockedPos; 
+    bool was_locked = (getEncryptionStatus() == Locked) || posonly;
     if(was_locked)
     {
         // Request UI to unlock wallet
@@ -438,13 +439,14 @@ WalletModel::UnlockContext WalletModel::requestUnlock()
     // If wallet is still locked, unlock was failed or cancelled, mark context as invalid
     bool valid = getEncryptionStatus() != Locked;
 
-    return UnlockContext(this, valid, was_locked);
+    return UnlockContext(this, valid, was_locked, posonly);
 }
 
-WalletModel::UnlockContext::UnlockContext(WalletModel *_wallet, bool _valid, bool _relock):
+WalletModel::UnlockContext::UnlockContext(WalletModel *_wallet, bool _valid, bool _relock, bool _posonly):
         wallet(_wallet),
         valid(_valid),
-        relock(_relock)
+        relock(_relock),
+        posonly(_posonly)
 {
 }
 
@@ -452,7 +454,11 @@ WalletModel::UnlockContext::~UnlockContext()
 {
     if(valid && relock)
     {
-        wallet->setWalletLocked(true);
+        if (!posonly) {
+            wallet->setWalletLocked(true);
+        } else {
+            wallet->setWalletLockedPos(false, "");
+        }
     }
 }
 

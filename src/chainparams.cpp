@@ -71,8 +71,8 @@ public:
 
         consensus.LastPoWHeight = 250;
         consensus.nMasternodePaymentsStartBlock = 1000;
-        consensus.nMasternodePaymentsPercent = 20;
-        consensus.nMasternodeAmountLock = 100;
+        consensus.nMasternodePaymentsPercent = 40;
+        consensus.nMasternodeAmountLock = 400;
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork =
@@ -106,9 +106,9 @@ public:
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
         vSeeds.clear();
-        vSeeds.emplace_back("seed.vovanchik.net");
         vSeeds.emplace_back("seed1.vovanchik.net");
         vSeeds.emplace_back("seed2.vovanchik.net");
+        vSeeds.emplace_back("seed3.vovanchik.net");
 
         base58Prefixes[PUBKEY_ADDRESS] = {0x03, 0x9F, 0x98};
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 173);
@@ -160,8 +160,8 @@ public:
 
         consensus.LastPoWHeight = 250;
         consensus.nMasternodePaymentsStartBlock = 1000;
-        consensus.nMasternodePaymentsPercent = 20;
-        consensus.nMasternodeAmountLock = 100;
+        consensus.nMasternodePaymentsPercent = 40;
+        consensus.nMasternodeAmountLock = 400;
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00");
@@ -184,9 +184,9 @@ public:
                uint256S("0x43f4af08ec6c49709828c670e1fee467ba3b179c5f1a896defc4ec99ed50d305")); 
 
         vSeeds.clear();
-        vSeeds.emplace_back("seed.vovanchik.net");
         vSeeds.emplace_back("seed1.vovanchik.net");
         vSeeds.emplace_back("seed2.vovanchik.net");
+        vSeeds.emplace_back("seed3.vovanchik.net");
         vFixedSeeds.clear();
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_test, pnSeed6_test + ARRAYLEN(pnSeed6_test));
 

@@ -322,11 +322,7 @@ crypto_libbitcoin_crypto_base_a_SOURCES = \
   crypto/sha256.cpp \
   crypto/sha256.h \
   crypto/sha512.cpp \
-  crypto/sha512.h \
-  crypto/scrypt.cpp \
-  crypto/scrypt.h \  
-  crypto/Lyra2Z.c \
-  crypto/Lyra2Z.h
+  crypto/sha512.h
 
 if USE_ASM
 crypto_libbitcoin_crypto_base_a_SOURCES += crypto/sha256_sse4.cpp

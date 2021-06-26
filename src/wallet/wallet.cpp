@@ -447,6 +447,9 @@ bool CWallet::LoadWatchOnly(const CScript &dest)
 
 bool CWallet::Unlock(const SecureString& strWalletPassphrase, bool fForPosOnly)
 {
+    if (!IsLocked() && fForPosOnly && CCryptoKeyStore::Unlock(CKeyingMaterial(), fForPosOnly))
+        return true;
+
     CCrypter crypter;
     CKeyingMaterial _vMasterKey;
 
@@ -1751,6 +1754,7 @@ int64_t CWallet::RescanFromTime(int64_t startTime, const WalletRescanReserver& r
     {
         LOCK(cs_main);
         startBlock = chainActive.FindEarliestAtLeast(startTime - TIMESTAMP_WINDOW);
+        if (startBlock == nullptr) startBlock = chainActive.Genesis();
         WalletLogPrintf("%s: Rescanning last %i blocks\n", __func__, startBlock ? chainActive.Height() - startBlock->nHeight + 1 : 0);
     }
 

@@ -143,6 +143,7 @@ BitcoinGUI::BitcoinGUI(interfaces::Node& node, const PlatformStyle *_platformSty
     frameBlocksLayout->setSpacing(3);
     unitDisplayControl = new UnitDisplayStatusBarControl(platformStyle);
     labelWalletEncryptionIcon = new QLabel();
+    labelWalletEncryptionIcon2 = new QLabel();
     labelWalletHDStatusIcon = new QLabel();
     labelProxyIcon = new QLabel();
     connectionsControl = new GUIUtil::ClickableLabel();
@@ -153,6 +154,7 @@ BitcoinGUI::BitcoinGUI(interfaces::Node& node, const PlatformStyle *_platformSty
         frameBlocksLayout->addWidget(unitDisplayControl);
         frameBlocksLayout->addStretch();
         frameBlocksLayout->addWidget(labelWalletEncryptionIcon);
+        frameBlocksLayout->addWidget(labelWalletEncryptionIcon2);
         frameBlocksLayout->addWidget(labelWalletHDStatusIcon);
     }
     frameBlocksLayout->addWidget(labelProxyIcon);
@@ -324,6 +326,8 @@ void BitcoinGUI::createActions()
     lockWalletAction->setToolTip(tr("Lock wallet"));
     unlockWalletAction = new QAction(tr("&Unlock Wallet"), this);
     unlockWalletAction->setToolTip(tr("Unlock wallet"));
+    unlockPosWalletAction = new QAction(tr("&Unlock Wallet for PoS"), this);
+    unlockPosWalletAction->setToolTip(tr("Unlock wallet for PoS"));
     signMessageAction = new QAction(platformStyle->TextColorIcon(":/icons/edit"), tr("Sign &message..."), this);
     signMessageAction->setStatusTip(tr("Sign messages with your Vqr addresses to prove you own them"));
     verifyMessageAction = new QAction(platformStyle->TextColorIcon(":/icons/verify"), tr("&Verify message..."), this);
@@ -364,6 +368,7 @@ void BitcoinGUI::createActions()
         connect(changePassphraseAction, SIGNAL(triggered()), walletFrame, SLOT(changePassphrase()));
         connect(lockWalletAction, SIGNAL(triggered()), walletFrame, SLOT(lockWallet()));
         connect(unlockWalletAction, SIGNAL(triggered()), walletFrame, SLOT(unlockWallet()));
+        connect(unlockPosWalletAction, SIGNAL(triggered()), walletFrame, SLOT(unlockPosWallet()));
         connect(signMessageAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
         connect(signMessageAction, SIGNAL(triggered()), this, SLOT(gotoSignMessageTab()));
         connect(verifyMessageAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
@@ -412,6 +417,7 @@ void BitcoinGUI::createMenuBar()
         settings->addAction(changePassphraseAction);
         settings->addAction(lockWalletAction);
         settings->addAction(unlockWalletAction);
+        settings->addAction(unlockPosWalletAction);
         settings->addSeparator();
     }
     settings->addAction(optionsAction);
@@ -1050,7 +1056,7 @@ void BitcoinGUI::message(const QString &title, const QString &message, unsigned 
         static uint64_t last = 0;
         static int count = 0;
         count++;
-        if (GetTime() - last >= 5) {
+        if (GetTime() - last >= 7) {
             QString msg = message;
             if (count > 1) msg += QString("[") + QString::number(count) + QString("]");
             notificator->notify(static_cast<Notificator::Class>(nNotifyIcon), strTitle, msg);
@@ -1193,40 +1199,54 @@ void BitcoinGUI::setEncryptionStatus(int status)
     {
     case WalletModel::Unencrypted:
         labelWalletEncryptionIcon->hide();
+        labelWalletEncryptionIcon2->hide();
         encryptWalletAction->setChecked(false);
         changePassphraseAction->setEnabled(false);
         lockWalletAction->setEnabled(false);
         unlockWalletAction->setEnabled(false);
+        unlockPosWalletAction->setEnabled(false);
         encryptWalletAction->setEnabled(true);
         break;
     case WalletModel::Unlocked:
         labelWalletEncryptionIcon->show();
         labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_open").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
         labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b>"));
+        labelWalletEncryptionIcon2->show();
+        labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+        labelWalletEncryptionIcon2->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b>"));
         encryptWalletAction->setChecked(true);
         changePassphraseAction->setEnabled(true);
         lockWalletAction->setEnabled(true);
         unlockWalletAction->setEnabled(false);
+        unlockPosWalletAction->setEnabled(false);
         encryptWalletAction->setEnabled(false); // TODO: decrypt currently not supported
         break;
     case WalletModel::UnlockedPos:
         labelWalletEncryptionIcon->show();
-        labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_open").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-        labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b> for PoS"));
+        labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_closed").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+        labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>locked</b>"));
+        labelWalletEncryptionIcon2->show();
+        labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+        labelWalletEncryptionIcon2->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b>"));
         encryptWalletAction->setChecked(true);
         changePassphraseAction->setEnabled(true);
         lockWalletAction->setEnabled(true);
         unlockWalletAction->setEnabled(true);
+        unlockPosWalletAction->setEnabled(false);
         encryptWalletAction->setEnabled(false); // TODO: decrypt currently not supported
         break;
     case WalletModel::Locked:
         labelWalletEncryptionIcon->show();
         labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_closed").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
         labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>locked</b>"));
+        labelWalletEncryptionIcon2->show();
+        labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_inactive").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+        labelWalletEncryptionIcon2->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>locked</b>"));
         encryptWalletAction->setChecked(true);
         changePassphraseAction->setEnabled(true);
         lockWalletAction->setEnabled(false);
         unlockWalletAction->setEnabled(true);
+        unlockPosWalletAction->setEnabled(true);
         encryptWalletAction->setEnabled(false); // TODO: decrypt currently not supported
         break;
     }
