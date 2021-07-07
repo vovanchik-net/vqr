@@ -180,13 +180,13 @@ void CActiveMasternode::ManageStateInitial(CConnman& connman)
         return;
     }
 
-//    if(service.GetPort() != Params().GetDefaultPort()) {
-//        nState = ACTIVE_MASTERNODE_NOT_CAPABLE;
-//        strNotCapableReason = strprintf("Invalid port: %u - only %d is supported on mainnet.", 
-//                    service.GetPort(), Params().GetDefaultPort());
-//        LogPrintf("CActiveMasternode::ManageStateInitial -- %s: %s\n", GetStateString(), strNotCapableReason);
-//        return;
-//    }
+    if(service.GetPort() != Params().GetDefaultPort()) {
+        nState = ACTIVE_MASTERNODE_NOT_CAPABLE;
+        strNotCapableReason = strprintf("Invalid port: %u - only %d is supported on mainnet.", 
+                    service.GetPort(), Params().GetDefaultPort());
+        LogPrintf("CActiveMasternode::ManageStateInitial -- %s: %s\n", GetStateString(), strNotCapableReason);
+        return;
+    }
 
     // Check socket connectivity
     LogPrintf("CActiveMasternode::ManageStateInitial -- Checking inbound connection to '%s'\n", service.ToString());

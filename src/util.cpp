@@ -959,9 +959,9 @@ std::string ArgsManager::GetChainName() const
 {
     bool fTestNet = ArgsManagerHelper::GetNetBoolArg(*this, "-testnet");
 
-//    if (fTestNet)
+    if (fTestNet)
         return CBaseChainParams::TESTNET;
-//    return CBaseChainParams::MAIN;
+    return CBaseChainParams::MAIN;
 }
 
 #ifndef WIN32

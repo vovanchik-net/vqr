@@ -22,6 +22,9 @@
 #include <txmempool.h>
 #include <utilstrencodings.h>
 #include <version.h>
+#include <policy/policy.h>
+#include <consensus/validation.h>
+#include <masternode.h>
 
 #include <boost/algorithm/string.hpp>
 
@@ -593,18 +596,36 @@ static const struct {
 
 // restapi
 
+static bool API_ERROR (HTTPRequest* req, std::string message) {
+    UniValue root (UniValue::VOBJ);
+    root.pushKV("status", "error");
+    root.pushKV("errmsg", message);
+    std::string strJSON = root.write() + "\n";
+    req->WriteHeader("Content-Type", "application/json");
+    req->WriteReply(HTTP_OK, strJSON);
+    return true;
+}
+
+static bool API_OK (HTTPRequest* req, UniValue& json) {
+    json.pushKV("status", "ok");
+    std::string strJSON = json.write() + "\n";
+    req->WriteHeader("Content-Type", "application/json");
+    req->WriteReply(HTTP_OK, strJSON);
+    return true;
+}
+
 UniValue GetNetworkHash () {
     CBlockIndex *pb = chainActive.Tip();
-    int lookup = 120;
+    int lookup = 24;
     if (pb == nullptr || !pb->nHeight) return 0;
     if (lookup > pb->nHeight) lookup = pb->nHeight;
     CBlockIndex *pb0 = pb;
-    while(pb0->IsProofOfStake()) pb0 = pb0->pprev;
+//    while(pb0->IsProofOfStake()) pb0 = pb0->pprev;
     int64_t minTime = pb0->GetBlockTime();
     int64_t maxTime = minTime;
     for (int i = 0; i < lookup; i++) {
         pb0 = pb0->pprev;
-        while (pb0->IsProofOfStake()) pb0 = pb0->pprev;
+//        while (pb0->IsProofOfStake()) pb0 = pb0->pprev;
         int64_t time = pb0->GetBlockTime();
         minTime = std::min(time, minTime);
         maxTime = std::max(time, maxTime);
@@ -630,10 +651,7 @@ bool api_chain (HTTPRequest* req, const std::string& strURIPart) {
     root.pushKV("size_on_disk",         CalculateCurrentUsage()); 
     root.pushKV("networkhash",          GetNetworkHash());
     root.pushKV("mempool_size",         (uint64_t)mempool.size());
-    std::string strJSON = root.write() + "\n";
-    req->WriteHeader("Content-Type", "application/json");
-    req->WriteReply(HTTP_OK, strJSON);
-    return true;
+    return API_OK (req, root);
 }
 
 bool api_net (HTTPRequest* req, const std::string& strURIPart) {
@@ -645,7 +663,6 @@ bool api_net (HTTPRequest* req, const std::string& strURIPart) {
     {
         UniValue obj(UniValue::VOBJ);
         obj.pushKV("id", "self");
-//            obj.pushKV("addr", stats.addrName);
         obj.pushKV("version", PROTOCOL_VERSION);
         obj.pushKV("subversion", strSubVersion);
         obj.pushKV("synced_headers", pindexBestHeader ? pindexBestHeader->nHeight : -1);
@@ -683,10 +700,7 @@ bool api_net (HTTPRequest* req, const std::string& strURIPart) {
         ipport.push_back(obj);
     }
     root.pushKV("addresses", ipport);
-    std::string strJSON = root.write() + "\n";
-    req->WriteHeader("Content-Type", "application/json");
-    req->WriteReply(HTTP_OK, strJSON);
-    return true;
+    return API_OK (req, root);
 }
 
 void getTxData (UniValue& obj, const CTransactionRef tx, uint256 hashBlock) {
@@ -729,6 +743,53 @@ void getTxData (UniValue& obj, const CTransactionRef tx, uint256 hashBlock) {
         vout.push_back(out);
     }
     obj.pushKV("output", vout);
+}
+
+bool api_mempool (HTTPRequest* req, const std::string& strURIPart) {
+    if (!CheckWarmup(req)) return false;
+
+    UniValue root (UniValue::VOBJ);
+    root.pushKV("size",             (int64_t) mempool.size()); 
+    root.pushKV("bytes",            (int64_t) mempool.GetTotalTxSize());
+    root.pushKV("usage",            (int64_t) mempool.DynamicMemoryUsage());
+    size_t maxmempool = gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000;
+    root.pushKV("mempoolminfee",    ValueFromAmount(std::max(mempool.GetMinFee(maxmempool), ::minRelayTxFee).GetFeePerK()));
+    root.pushKV("minrelaytxfee",    ValueFromAmount(::minRelayTxFee.GetFeePerK())); 
+    {
+        LOCK(mempool.cs);
+        UniValue sub (UniValue::VOBJ);
+        for (const CTxMemPoolEntry& e : mempool.mapTx) {
+            UniValue obj(UniValue::VOBJ);
+            getTxData (obj, e.GetSharedTx(), uint256());
+            sub.push_back(obj);
+        }
+        root.pushKV("tx", sub);
+    }
+    return API_OK (req, root);
+}
+
+bool api_masternode (HTTPRequest* req, const std::string& strURIPart) {
+    if (!CheckWarmup(req)) return false;
+
+    UniValue obj(UniValue::VOBJ);
+    std::map<COutPoint, CMasternode> mapMasternodes = mnodeman.GetFullMasternodeMap();
+    for (const auto& mnpair : mapMasternodes) {
+        const CMasternode& mn = mnpair.second;
+        UniValue objMN(UniValue::VOBJ);
+        objMN.pushKV("address", mn.addr.ToString());
+        objMN.pushKV("payee", EncodeDestination(mn.pubKeyCollateralAddress.GetID()));
+        objMN.pushKV("status", mn.GetStatus());
+        objMN.pushKV("protocol", mn.nProtocolVersion);
+        objMN.pushKV("lastseen", (int64_t)mn.lastPing.sigTime);
+        objMN.pushKV("activeseconds", (int64_t)(mn.lastPing.sigTime - mn.sigTime));
+        objMN.pushKV("lastpaidtime", mn.GetLastPaidTime());
+        objMN.pushKV("lastpaidblock", mn.GetLastPaidBlock());
+        obj.pushKV(mnpair.first.ToString(), objMN);
+    }
+    UniValue root (UniValue::VOBJ);
+    root.pushKV("count", mnodeman.size()); 
+    root.pushKV("mn", obj);
+    return API_OK (req, root);
 }
 
 std::string getHeaderData (UniValue& obj, const CBlockIndex* pi, bool full_tx) {
@@ -777,36 +838,33 @@ bool api_header (HTTPRequest* req, const std::string& strURIPart) {
     uint32_t nn;
     if (pos == std::string::npos) { s1 = strURIPart; } else {
         s1 = strURIPart.substr(0, pos);
-        if (s1 == "") return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " index not found");
+        if (s1 == "") return API_ERROR (req, "header hash is null");
         std::string s2 = strURIPart.substr(pos + 1);
-        if (ParseUInt32(s2, &nn) && (nn < 199)) { count = nn; } else
-            return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " count is invalid");
+        if (ParseUInt32(s2, &nn) && (nn < 599)) { count = nn; } else
+            return API_ERROR (req, "header count is invalid (" + strURIPart + ")");        
     }
     if (ParseUInt32(s1, &nn)) {
         pi = chainActive[nn];
-        if (!pi) return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " index not found");
+        if (!pi) return API_ERROR (req, "header index " + strURIPart + " not found");
     } else if (IsHex(s1)) {
         uint256 hash;
         hash.SetHex(s1);
         pi = LookupBlockIndex(hash);
-        if (!pi) return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " hash not found");
+        if (!pi) return API_ERROR (req, "header hash " + strURIPart + " not found");
     } else if (s1 == "") {
         pi = chainActive[chainActive.Height() <= count ? 0 : chainActive.Height() - count];
-        if (!pi) return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " defindex not found");
-    } else  return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " params is invalid");
+        if (!pi) return API_ERROR (req, "header hash " + strURIPart + " not found");
+    } else return API_ERROR (req, "params " + strURIPart + " is invalid");
     UniValue root (UniValue::VOBJ);
     while (pi != nullptr && chainActive.Contains(pi)) {
         UniValue obj (UniValue::VOBJ);
         std::string ret = getHeaderData (obj, pi, false);
-        if (ret != "") return RESTERR(req, HTTP_NOT_FOUND, strprintf("[%d]: %s", pi->nHeight, ret));
+        if (ret != "") return API_ERROR (req, strprintf("[%d]: %s", pi->nHeight, ret));
         root.pushKV(strprintf("%d", pi->nHeight), obj);
         if (count-- <= 0) break;
         pi = chainActive.Next(pi);
     }
-    std::string strJSON = root.write() + "\n";
-    req->WriteHeader("Content-Type", "application/json");
-    req->WriteReply(HTTP_OK, strJSON);
-    return true;
+    return API_OK (req, root);
 }
 
 bool api_block (HTTPRequest* req, const std::string& strURIPart) {
@@ -815,85 +873,168 @@ bool api_block (HTTPRequest* req, const std::string& strURIPart) {
     uint32_t nn;
     if (ParseUInt32(strURIPart, &nn)) {
         pi = chainActive[nn];
-        if (!pi) return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " index not found");
+        if (!pi) return API_ERROR (req, "block index " + strURIPart + " not found");
     } else if (IsHex(strURIPart)) {
         uint256 hash;
         hash.SetHex(strURIPart);
         pi = LookupBlockIndex(hash);
-        if (!pi) return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " hash not found");
+        if (!pi) return API_ERROR (req, "block hash " + strURIPart + " not found");
     } else if (strURIPart == "") {
         pi = chainActive.Tip();
-        if (!pi) return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " defindex not found");
-    } else  return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " is invalid");
+        if (!pi) return API_ERROR (req, "block index " + strURIPart + " not found");
+    } else return API_ERROR (req, "params " + strURIPart + " is invalid");
     UniValue root (UniValue::VOBJ);
     UniValue obj (UniValue::VOBJ);
     std::string ret = getHeaderData (obj, pi, true);
-    if (ret != "") return RESTERR(req, HTTP_NOT_FOUND, strprintf("[%d]: %s", pi->nHeight, ret));
+    if (ret != "") return API_ERROR (req, strprintf("[%d]: %s", pi->nHeight, ret));
     root.pushKV(strprintf("%d", pi->nHeight), obj);
-    std::string strJSON = root.write() + "\n";
-    req->WriteHeader("Content-Type", "application/json");
-    req->WriteReply(HTTP_OK, strJSON);
-    return true;
+    return API_OK (req, root);
 }
 
 bool api_tx (HTTPRequest* req, const std::string& strURIPart) {
     if (!CheckWarmup(req)) return false;
     uint256 hash;
     if (!ParseHashStr(strURIPart, hash))
-        return RESTERR(req, HTTP_BAD_REQUEST, "Invalid hash: " + strURIPart);
+        return API_ERROR (req, "tx hash " + strURIPart + " is invalid");
     CTransactionRef tx;
     uint256 hashBlock = uint256();
     if (!GetTransaction(hash, tx, Params().GetConsensus(), hashBlock, true))
-        return RESTERR(req, HTTP_NOT_FOUND, strURIPart + " not found");
+        return API_ERROR (req, "tx hash " + strURIPart + " not found");
     UniValue root (UniValue::VOBJ);
     getTxData (root, tx, hashBlock);
-    std::string strJSON = root.write() + "\n";
-    req->WriteHeader("Content-Type", "application/json");
-    req->WriteReply(HTTP_OK, strJSON);
-    return true;
+    CBlockIndex* pi = LookupBlockIndex(hashBlock);
+    if (pi) {
+        root.pushKV("blockhash", pi->GetBlockHash().GetHex());
+        int confirmations = -1;
+        if (chainActive.Contains(pi)) confirmations = chainActive.Height() - pi->nHeight + 1;
+        root.pushKV("blockconfirmations", confirmations);
+        root.pushKV("blockheight", pi->nHeight);
+        root.pushKV("blocktime", pi->GetBlockTime());
+    } else {
+        root.pushKV("blockhash", hashBlock.GetHex());
+        root.pushKV("blockconfirmations", (int)-1);
+        root.pushKV("blockheight", (int)-1);
+        root.pushKV("blocktime", (int)0);
+    }
+    return API_OK (req, root);
 }
 
 bool heightSort(std::pair<CAddressKey, CAddressValue> a, std::pair<CAddressKey, CAddressValue> b) {
-    return a.second.height < b.second.height;
+    return a.second.height > b.second.height;
 }
 
 bool api_address (HTTPRequest* req, const std::string& strURIPart) {
     if (!CheckWarmup(req)) return false;
-    CTxDestination dest = DecodeDestination(strURIPart);
-    if (!IsValidDestination(dest)) 
-        return RESTERR(req, HTTP_BAD_REQUEST, "Invalid addr: " + strURIPart);
-    CScript addr = GetScriptForDestination(dest);
+    int index = 0;
+    const std::string::size_type pos = strURIPart.rfind('_');
+    std::string sss;
+    if (pos == std::string::npos) { sss = strURIPart; } else {
+        sss = strURIPart.substr(0, pos);
+        if (sss == "") return API_ERROR (req, "address is null");
+        uint32_t nn = 0;
+        std::string s2 = strURIPart.substr(pos + 1);
+        if (ParseUInt32(s2, &nn) && (nn < 9999)) { index = nn; } else
+            return API_ERROR (req, "address count " + strURIPart + " is invalid");
+    }
+    if (!IsValidDestination(DecodeDestination(sss))) 
+        return API_ERROR (req, "address " + strURIPart + " is invalid");
     std::vector<std::pair<CAddressKey, CAddressValue>> info;
-    if (!pblocktree->ReadAddress(addr, info))
-        return RESTERR(req, HTTP_BAD_REQUEST, "Invalid addr:: " + strURIPart);
+    if (!pblocktree->ReadAddress(GetScriptForDestination(DecodeDestination(sss)), info))
+        return API_ERROR (req, "address " + strURIPart + " not found");
     UniValue coins(UniValue::VARR);
-    CAmount value = 0;
+    CAmount value = 0, receive_amount = 0, send_amount = 0; 
+    int total_in = 0, total_out = 0, total_pos = 0; index *= 200;
     std::sort(info.begin(), info.end(), heightSort); 
     for (auto it : info) {
         UniValue output(UniValue::VOBJ);
+        total_in++;
+        receive_amount += it.second.value;
         output.pushKV("value", ValueFromAmount(it.second.value));
         output.pushKV("tx_hash", it.first.out.hash.GetHex());
         output.pushKV("tx_out", (int64_t)it.first.out.n);
         output.pushKV("tx_height", (int64_t)it.second.height);
+        const CBlockIndex* pi = chainActive[it.second.height];
+        if (pi) output.pushKV("tx_time", pi->GetBlockTime());
         if (it.second.spend_height == 0) {
             output.pushKV("isspent", false);
             value += it.second.value;
         } else {
+            total_out++;
+            send_amount += it.second.value;
             output.pushKV("isspent", true);
             output.pushKV("spent_tx_hash", it.second.spend_hash.GetHex());
             output.pushKV("spent_tx_out", (int64_t)it.second.spend_n);
             output.pushKV("spent_tx_height", (int64_t)it.second.spend_height);
+            const CBlockIndex* pi = chainActive[it.second.spend_height];
+            if (pi) output.pushKV("spent_tx_time", pi->GetBlockTime());
         }
-        coins.push_back(output);
+        total_pos++;
+        if ((index <= total_pos) && (total_pos < index + 200)) coins.push_back(output);
     }
     UniValue objTx(UniValue::VOBJ);
-    objTx.pushKV("address", strURIPart);
+    objTx.pushKV("address", sss);
     objTx.pushKV("value", ValueFromAmount(value));
+    objTx.pushKV("receive_count", total_in);
+    objTx.pushKV("send_count", total_out);
+    objTx.pushKV("receive_amount", ValueFromAmount(receive_amount));
+    objTx.pushKV("send_amount", ValueFromAmount(send_amount));
+    objTx.pushKV("start_offset", index);
     objTx.pushKV("coins", coins);
-    std::string strJSON = objTx.write() + "\n";
-    req->WriteHeader("Content-Type", "application/json");
-    req->WriteReply(HTTP_OK, strJSON);
-    return true;
+    return API_OK (req, objTx);
+}
+
+bool api_send (HTTPRequest* req, const std::string& strURIPart) {
+    if (!CheckWarmup(req)) return false;
+    if (req->GetRequestMethod() != HTTPRequest::POST)
+        return API_ERROR (req, "only POST requests");
+    UniValue uniRequest;
+    if (!uniRequest.read(req->ReadBody()))
+        return API_ERROR (req, "POST json incorrect");
+    UniValue txdata = find_value(uniRequest, "txdata");
+    if (txdata.isNull())
+        return API_ERROR (req, "json txdata not found");
+
+    CMutableTransaction mtx;
+    if (!DecodeHexTx(mtx, txdata.get_str()))
+        return API_ERROR (req, "json txdata incorrect");
+    CTransactionRef tx(MakeTransactionRef(std::move(mtx)));
+    UniValue root (UniValue::VOBJ);
+    const uint256& hashTx = tx->GetHash();
+    bool fHaveChain = false;
+    {
+        LOCK(cs_main);
+        CCoinsViewCache &view = *pcoinsTip;
+        for (size_t o = 0; !fHaveChain && o < tx->vout.size(); o++) {
+            const Coin& existingCoin = view.AccessCoin(COutPoint(hashTx, o));
+            fHaveChain = !existingCoin.IsSpent();
+            if (fHaveChain) break;
+        }
+    }
+    if (fHaveChain) {
+        root.pushKV("status", "transaction already in blockchain");
+    } else if (mempool.exists(hashTx)) {
+        root.pushKV("status", "transaction already in mempool");
+    } else {
+        CValidationState state;
+        bool fMissingInputs;
+        if (!AcceptToMemoryPool(mempool, state, std::move(tx), &fMissingInputs,
+                    nullptr /* plTxnReplaced */, false /* bypass_limits */, maxTxFee)) {
+            if (state.IsInvalid()) {
+                return API_ERROR (req, FormatStateMessage(state));
+            } else {
+                if (fMissingInputs)
+                    return API_ERROR (req, "tx " + hashTx.ToString() + " missing inputs");
+                return API_ERROR (req, FormatStateMessage(state));
+            }
+        } else {
+            if (g_connman) {
+                CInv inv(MSG_TX, hashTx);
+                g_connman->ForEachNode([&inv](CNode* pnode) { pnode->PushInventory(inv); });
+            }
+            root.pushKV("status", "transaction added to mempool");
+        }
+    }
+    return API_OK (req, root);
 }
 
 static const struct {
@@ -902,11 +1043,13 @@ static const struct {
 } api_uri_prefixes[] = {
       {"/api/chain", api_chain}, 
       {"/api/net", api_net},
+      {"/api/mempool", api_mempool},
+      {"/api/masternode", api_masternode},
       {"/api/header/", api_header},     // start_hash, start_hash/num_header, start_index, start_index/num_header
       {"/api/block/", api_block},       // hash, index
       {"/api/tx/", api_tx},             // hash
       {"/api/address/", api_address},   // address
-//      {"/api/send/", api_send},         // TX HEX
+      {"/api/send/", api_send},         // TX HEX
 };
 
 bool StartREST()

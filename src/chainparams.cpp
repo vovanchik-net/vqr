@@ -22,12 +22,13 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
     txNew.nVersion = 1;
     txNew.vin.resize(1);
     txNew.vout.resize(1);
-    txNew.vin[0].scriptSig = CScript() << 332127900 << 
-        // Mine coins with your mind! https://t.me/VirtualQuestRoom
-        ParseHex("4d696e6520636f696e73207769746820796f7572206d696e64212068747470733a2f2f742e6d652f5669727475616c5175657374526f6f6d");
+    txNew.vin[0].scriptSig = CScript() << 332117100 <<
+        // Make money with your mind!
+        ParseHex("4d616b65206d6f6e6579207769746820796f7572206d696e6421");
+
     txNew.vout[0].nValue = genesisReward;
     txNew.vout[0].scriptPubKey << 
-        ParseHex("0375e4ed2563156bf9eac1f070ba6c2b7fd5b5e1ad88e04d08f44581cb8223e2d6") << OP_CHECKSIG;
+        ParseHex("0383b6af765eac9aa170a676530f669a2b8da24785447aad146a4d3b01aa3588ee") << OP_CHECKSIG;
 
     CBlock genesis;
     genesis.nTime    = nTime;
@@ -69,7 +70,7 @@ public:
         consensus.nPosTargetSpacing = 2.5 * 60;
         consensus.nCoinAgeTick = 2 * 60 * 60;
 
-        consensus.LastPoWHeight = 250;
+        consensus.LastPoWHeight = 500;
         consensus.nMasternodePaymentsStartBlock = 1000;
         consensus.nMasternodePaymentsPercent = 40;
         consensus.nMasternodeAmountLock = 400;
@@ -94,12 +95,12 @@ public:
         nDefaultPort = 9987;
         nPruneAfterHeight = 100000;
 
-        genesis = CreateGenesisBlock (1622948766, 14483663, 0x1e00ffff, 1, 2.5 * COIN);
+        genesis = CreateGenesisBlock (1625641627, 3088937, 0x1e00ffff, 1, 2.5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock ==
-               uint256S("0x000000cf62a52687bab15c359c367b698edca7090b1468aae58b20cdefe63487"));
+               uint256S("0x0000000bafe43d32dcc3f0ee1e6a685cd310527a30103cb1e8da79eac595a247"));
         assert(genesis.hashMerkleRoot ==
-               uint256S("0x43f4af08ec6c49709828c670e1fee467ba3b179c5f1a896defc4ec99ed50d305"));
+               uint256S("0x67cf72d107c8ebff08144311dfecea556286948da32a9ea039fc40b0944ee16c"));
         // Note that of those which support the service bits prefix, most only support a subset of
         // possible options.
         // This is fine at runtime as we'll fall back to using them as a oneshot if they don't support the
@@ -127,7 +128,7 @@ public:
 
         checkpointData = {
             {
-                {0, uint256S("0x000000cf62a52687bab15c359c367b698edca7090b1468aae58b20cdefe63487")},
+                {0, uint256S("0x0000000bafe43d32dcc3f0ee1e6a685cd310527a30103cb1e8da79eac595a247")},
             }
         };
 
@@ -176,12 +177,12 @@ public:
         nDefaultPort = 9987;
         nPruneAfterHeight = 100000;
  
-        genesis = CreateGenesisBlock (1622678400, 4463749, 0x1e00ffff, 1, 2.5 * COIN);
+        genesis = CreateGenesisBlock (1625641623, 42816410, 0x1e00ffff, 1, 2.5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock ==
-               uint256S("0x0000000440b7c81e63789188a4a52030f656de441e6b698f1128d6676ad975e6"));
+               uint256S("0x00000058e212bd59aa76a04449baebdda85e1117a3c691ceb5ec0ac65dfa89ce"));
         assert(genesis.hashMerkleRoot ==
-               uint256S("0x43f4af08ec6c49709828c670e1fee467ba3b179c5f1a896defc4ec99ed50d305")); 
+               uint256S("0x67cf72d107c8ebff08144311dfecea556286948da32a9ea039fc40b0944ee16c")); 
 
         vSeeds.clear();
         vSeeds.emplace_back("seed1.vovanchik.net");
@@ -204,7 +205,7 @@ public:
 
         checkpointData = {
             {
-                {0, uint256S("0x0000000440b7c81e63789188a4a52030f656de441e6b698f1128d6676ad975e6")},
+                {0, uint256S("0x00000058e212bd59aa76a04449baebdda85e1117a3c691ceb5ec0ac65dfa89ce")},
             }
         };
 

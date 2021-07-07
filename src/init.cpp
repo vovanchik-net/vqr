@@ -561,7 +561,7 @@ void SetupServerArgs()
 std::string LicenseInfo()
 {
     const std::string URL_SOURCE_CODE = "<https://github.com/vovanchik-net/vqr>";
-    const std::string URL_WEBSITE = "<https://t.me/crypto_dev>";
+    const std::string URL_WEBSITE = "<https://vqr.vovanchik.net>";
 
     return CopyrightHolders(strprintf(_("Copyright (C) %i-%i"), 2009, COPYRIGHT_YEAR) + " ") + "\n" +
            "\n" +

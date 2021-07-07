@@ -597,7 +597,9 @@ void POSMinerThread (int POSIndex) {
             }
             if (pwallet->IsLocked(true)) { MilliSleep(3000); continue; };
             if (!masternodeSync.IsSynced()) { MilliSleep(5000); continue; };
-            if (!g_connman || (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) < 2)) { MilliSleep(3000); continue; };
+            int count = 0;
+            if (g_connman) g_connman->ForEachNode([&count](CNode* pnode) { count++; });
+            if (!g_connman || (count < 4)) { MilliSleep(3000); continue; };
             bool fPoSCancel = false;
             std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewPoSBlock(fPoSCancel, pwallet));
             if (fPoSCancel) { MilliSleep (2000); continue; }
