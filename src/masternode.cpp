@@ -1266,7 +1266,7 @@ bool CMasternodeBlockPayees::GetBestPayee(CScript& payeeRet) const
         }
     }
 
-    return nVotes >= MNPAYMENTS_SIGNATURES_REQUIRED; //(nVotes > -1); ?????????????
+    return nVotes >= 0;
 }
 
 bool CMasternodeBlockPayees::HasPayeeWithVotes(const CScript& payeeIn, int nVotesReq) const
