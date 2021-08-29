@@ -2582,6 +2582,82 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         // message would be undesirable as we transmit it ourselves.
     }
 
+    else if (strCommand == "MN_ANNOUNCE") {
+        uint256 hash;
+        vRecv >> hash;
+        if (!mns.exist(hash)) {
+            connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make("MN_GET", hash));
+        }
+    }
+
+    else if (strCommand == "MN_GET") {
+        uint256 hash;
+        vRecv >> hash;
+        LOCK (mns.cs);
+        CNetMsgMaker msgMaker(pfrom->GetSendVersion());
+        for (const auto& mn : mns.mapMasternodes) {
+            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("MN_ANNOUNCE", mn.first));
+            if (hash == mn.first)  connman->PushMessage(pfrom, msgMaker.Make("MN_PUT", mn.second));
+        }
+    }
+
+    else if (strCommand == "MN_PUT") {
+        CMN mn;
+        vRecv >> mn;
+        LOCK (mns.cs);
+        if (mn.check()) {
+            uint256 hash = mn.getHash();
+            for (const auto& mmn : mns.mapMasternodes) {
+                if (mmn.second.outpoint == mn.outpoint) {
+                    mns.mapOldMasternodes[mmn.first] = mmn.second;
+                    mns.mapMasternodes.erase(mmn.first);
+                }
+            }
+            mns.mapMasternodes[hash] = mn;
+            g_connman->ForEachNode([&connman, &hash](CNode* pnode) {
+                connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_ANNOUNCE", hash));
+            });
+        } else {
+            uint256 hash = mn.getHash();
+            mns.mapOldMasternodes[hash] = mn;
+        }
+    }
+
+    else if (strCommand == "MN_VOTE_ANNOUNCE") {
+        uint256 hash;
+        vRecv >> hash;
+        if (!mnvotes.exist(hash)) {
+            connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make("MN_VOTE_GET", hash));
+        }
+    }
+
+    else if (strCommand == "MN_VOTE_GET") {
+        uint256 hash;
+        vRecv >> hash;
+        LOCK (mnvotes.cs);
+        CNetMsgMaker msgMaker(pfrom->GetSendVersion());
+        for (const auto& mn : mnvotes.mapVotes) {
+            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("MN_VOTE_ANNOUNCE", mn.first));
+            if (hash == mn.first)  connman->PushMessage(pfrom, msgMaker.Make("MN_VOTE_PUT", mn.second));
+        }
+    }
+
+    else if (strCommand == "MN_VOTE_PUT") {
+        CMNVote mn;
+        vRecv >> mn;
+        LOCK (mnvotes.cs);
+        if (mn.check()) {
+            uint256 hash = mn.getHash();
+            mnvotes.mapVotes[hash] = mn;
+            g_connman->ForEachNode([&connman, &hash](CNode* pnode) {
+                connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_VOTE_ANNOUNCE", hash));
+            });
+        } else {
+            uint256 hash = mn.getHash();
+            mnvotes.mapOldVotes[hash] = mn;
+        }
+    }
+
     else {
         bool found = false;
         const std::vector<std::string> &allMessages = getAllNetMessageTypes();

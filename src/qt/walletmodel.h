@@ -24,7 +24,6 @@
 enum class OutputType;
 
 class AddressTableModel;
-class CoinsTableModel;
 class OptionsModel;
 class PlatformStyle;
 class RecentRequestsTableModel;
@@ -125,7 +124,6 @@ public:
 
     OptionsModel *getOptionsModel();
     AddressTableModel *getAddressTableModel();
-    CoinsTableModel *getCoinsTableModel();
     TransactionTableModel *getTransactionTableModel();
     RecentRequestsTableModel *getRecentRequestsTableModel();
 
@@ -216,7 +214,6 @@ private:
     OptionsModel *optionsModel;
 
     AddressTableModel *addressTableModel;
-    CoinsTableModel *coinsTableModel;
     TransactionTableModel *transactionTableModel;
     RecentRequestsTableModel *recentRequestsTableModel;
 

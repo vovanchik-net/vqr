@@ -12,8 +12,6 @@
 #include <qt/sendcoinsdialog.h>
 #include <qt/transactiontablemodel.h>
 
-#include <qt/coinsview.h>
-
 #include <interfaces/handler.h>
 #include <interfaces/node.h>
 #include <key_io.h>
@@ -41,7 +39,6 @@ WalletModel::WalletModel(std::unique_ptr<interfaces::Wallet> wallet, interfaces:
     fForceCheckBalanceChanged = false;
 
     addressTableModel = new AddressTableModel(this);
-    coinsTableModel = new CoinsTableModel(this);
     transactionTableModel = new TransactionTableModel(platformStyle, this);
     recentRequestsTableModel = new RecentRequestsTableModel(this);
 
@@ -268,11 +265,6 @@ OptionsModel *WalletModel::getOptionsModel()
 AddressTableModel *WalletModel::getAddressTableModel()
 {
     return addressTableModel;
-}
-
-CoinsTableModel *WalletModel::getCoinsTableModel()
-{
-    return coinsTableModel;
 }
 
 TransactionTableModel *WalletModel::getTransactionTableModel()

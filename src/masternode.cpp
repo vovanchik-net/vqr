@@ -4065,3 +4065,166 @@ bool CMasternodeConfig::write(std::string& strErrRet) {
     }
     return true;
 }
+
+// new masternodes
+
+uint256 activemn;
+
+CMNList mns;
+
+uint256 CMN::getHash () const {
+    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
+    ::Serialize(writer, *this);
+    return writer.GetHash();
+}
+
+bool CMN::check () {
+    return true;
+}
+
+bool CMN::sign () {
+    sigTime = GetAdjustedTime();
+    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
+    writer << outpoint << addr << scriptPayout << pkMasternode << sigTime;
+    uint256 hash2 = writer.GetHash();
+    if (!CHashSigner::SignHash(hash2, activeMasternode.keyMasternode, sig)) return false;
+    std::string strError;
+    if (!CHashSigner::VerifyHash(hash2, activeMasternode.pubKeyMasternode, sig, strError)) return false;
+    return true;
+}
+
+void CMN::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
+    dumpfunc(border + outpoint.ToString() + " {");
+    dumpfunc(border + "    address = " + addr.ToString());
+    CTxDestination address;
+    if (ExtractDestination(scriptPayout, address))
+        dumpfunc(border + "    pay_addr = " + EncodeDestination(address));
+//      dumpfunc(border + "    status = " + GetStatus());
+    dumpfunc(border + "    firstseen = " + EasyFormatDateTime(sigTime));
+//      dumpfunc(border + "    lastseen = " + EasyFormatDateTime(lastPing.sigTime));
+//      dumpfunc(border + "    activeseconds = " + itostr(lastPing.sigTime - sigTime));
+//      dumpfunc(border + "    lastpaidtime = " + EasyFormatDateTime(GetLastPaidTime()));
+    dumpfunc(border + "    lastpaidblock = " + itostr(nLastPaidHeight));
+    dumpfunc(border + "    output = " + HexStr(outpoint.hash) + " : " + itostr(outpoint.n));
+    dumpfunc(border + "}");
+}
+
+void CMNList::update (const CBlockIndex *pindex) {
+    if ((activemn == uint256()) && fMasternodeMode) {
+        {
+            LOCK (mns.cs);
+            for (const auto& mn : mns.mapMasternodes) {
+                if (mn.second.outpoint != activeMasternode.outpoint) continue;
+                activemn = mn.first;
+                break;
+            }
+        }
+        if (activemn == uint256()) {
+            CMasternode mnnn;
+            mnodeman.Get(activeMasternode.outpoint, mnnn);
+            CMN mn;
+            mn.outpoint = activeMasternode.outpoint;
+            mn.addr = activeMasternode.service;
+            mn.scriptPayout = mnnn.GetPayScript();
+            mn.pkMasternode = activeMasternode.pubKeyMasternode;
+            mn.sign ();
+            activemn = mn.getHash();
+            {
+                LOCK (mns.cs);
+                mns.mapMasternodes[activemn] = mn;
+            }
+            CConnman& connman = *g_connman;
+            connman.ForEachNode([&connman](CNode* pnode) {
+                connman.PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_ANNOUNCE", activemn));
+            });
+        }
+    }
+    if ((activemn != uint256()) && (chainActive.Height() > 48)) {
+        CMNVote newvote;
+        newvote.mn_id = activemn;
+        newvote.block_id = pindex->GetAncestor(pindex->nHeight - 24)->GetBlockHash();
+        newvote.type = 1;
+        {
+            LOCK (mns.cs);
+            for (const auto& mn : mns.mapMasternodes) {
+                if (mn.first != newvote.mn_id) newvote.data.push_back(mn.first);
+            }
+        }
+        newvote.sign ();
+        uint256 hash = newvote.getHash();
+        {
+            LOCK (mnvotes.cs);
+            mnvotes.mapVotes[hash] = newvote;
+        }
+        CConnman& connman = *g_connman;
+        connman.ForEachNode([&connman, &hash](CNode* pnode) {
+            connman.PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_VOTE_ANNOUNCE", hash));
+        });
+    }
+}
+
+void CMNList::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
+    LOCK(cs);
+    dumpfunc(border + "mapMasternodes {");
+    for (auto& item : mapMasternodes)
+        item.second.dump (border + "        ", dumpfunc);
+    dumpfunc(border + "}");
+    dumpfunc(border + "mapOldMasternodes {");
+    for (auto& item : mapOldMasternodes)
+        item.second.dump (border + "        ", dumpfunc);
+    dumpfunc(border + "}");
+}
+
+CMNVoteList mnvotes;
+
+uint256 CMNVote::getHash () const {
+    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
+    ::Serialize(writer, *this);
+    return writer.GetHash();
+}
+
+bool CMNVote::check () {
+    return true;
+}
+
+bool CMNVote::sign () {
+    sigTime = GetAdjustedTime();
+    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
+    writer << mn_id << block_id << sigTime << type << data;
+    uint256 hash2 = writer.GetHash();
+    if (!CHashSigner::SignHash(hash2, activeMasternode.keyMasternode, sig)) return false;
+    std::string strError;
+    if (!CHashSigner::VerifyHash(hash2, activeMasternode.pubKeyMasternode, sig, strError)) return false;
+    return true;
+}
+
+void CMNVote::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
+    dumpfunc(border + HexStr(getHash()) + " {");
+    dumpfunc(border + "    id = " + HexStr(mn_id));
+    dumpfunc(border + "    block = " + HexStr(block_id));
+    dumpfunc(border + "    time = " + EasyFormatDateTime(sigTime));
+    dumpfunc(border + "    type = " + itostr(type));
+    dumpfunc(border + "    data = {");
+    for (auto& item : data)
+        dumpfunc(border + "    " + HexStr(item) + ", ");
+    dumpfunc(border + "    }");
+    dumpfunc(border + "}");
+}
+
+void CMNVoteList::update (const CBlockIndex *pindex) {
+
+
+
+}
+
+void CMNVoteList::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
+    LOCK(cs);
+    dumpfunc(border + "mapVotes {");
+    for (auto& item : mapVotes)
+        item.second.dump (border + "        ", dumpfunc);
+    dumpfunc(border + "}");
+    dumpfunc(border + "mapOldVotes {");
+    for (auto& item : mapOldVotes)
+        item.second.dump (border + "        ", dumpfunc);
+    dumpfunc(border + "}");
+}

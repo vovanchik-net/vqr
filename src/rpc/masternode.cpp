@@ -358,6 +358,14 @@ UniValue masternode_dump (const JSONRPCRequest& request) {
     debug_log ("");
     debug_log ("");
 //    governance.Dump("", [](std::string ss) { debug_log (ss); });
+    debug_log ("");
+    debug_log ("");
+    debug_log ("");
+    mns.dump("", [](std::string ss) { debug_log (ss); });
+    debug_log ("");
+    debug_log ("");
+    debug_log ("");
+    mnvotes.dump("", [](std::string ss) { debug_log (ss); });
     debug_log ("*");
 
     return {};

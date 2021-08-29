@@ -262,13 +262,6 @@ void BitcoinGUI::createActions()
     historyAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_4));
     tabGroup->addAction(historyAction);
 
-    coinsAction = new QAction(platformStyle->SingleColorIcon(":/icons/tab_coins"), tr("&Coins"), this);
-    coinsAction->setStatusTip(tr("Show your coins capacity"));
-    coinsAction->setToolTip(coinsAction->statusTip());
-    coinsAction->setCheckable(true);
-    coinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_5));
-  //  tabGroup->addAction(coinsAction);
-
     masternodeAction = new QAction(platformStyle->SingleColorIcon(":/icons/eye"), tr("&Masternodes"), this);
     masternodeAction->setStatusTip(tr("Show your coins capacity"));
     masternodeAction->setToolTip(masternodeAction->statusTip());
@@ -291,8 +284,6 @@ void BitcoinGUI::createActions()
     connect(receiveCoinsMenuAction, SIGNAL(triggered()), this, SLOT(gotoReceiveCoinsPage()));
     connect(historyAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
     connect(historyAction, SIGNAL(triggered()), this, SLOT(gotoHistoryPage()));
-  //  connect(coinsAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
-  //  connect(coinsAction, SIGNAL(triggered()), this, SLOT(gotoCoinsPage()));
     connect(masternodeAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
     connect(masternodeAction, SIGNAL(triggered()), this, SLOT(gotoMasternodePage()));
 #endif // ENABLE_WALLET
@@ -446,7 +437,6 @@ void BitcoinGUI::createToolBars()
         toolbar->addAction(sendCoinsAction);
         toolbar->addAction(receiveCoinsAction);
         toolbar->addAction(historyAction);
-  //      toolbar->addAction(coinsAction);
         toolbar->addAction(masternodeAction);
         overviewAction->setChecked(true);
 
@@ -745,12 +735,6 @@ void BitcoinGUI::gotoMasternodePage()
 {
     masternodeAction->setChecked(true);
     if (walletFrame) walletFrame->gotoMasternodePage();
-}
-
-void BitcoinGUI::gotoCoinsPage()
-{
-    coinsAction->setChecked(true);
-    if (walletFrame) walletFrame->gotoCoinsPage();
 }
 
 void BitcoinGUI::gotoReceiveCoinsPage()

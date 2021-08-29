@@ -422,8 +422,8 @@ public:
 
 class CMasternodePaymentVote;
 
-static const int MNPAYMENTS_SIGNATURES_REQUIRED         = 3;
-static const int MNPAYMENTS_SIGNATURES_TOTAL            = 10;
+static const int MNPAYMENTS_SIGNATURES_REQUIRED         = 15;
+static const int MNPAYMENTS_SIGNATURES_TOTAL            = 50;
 
 extern CCriticalSection cs_vecPayees;
 extern CCriticalSection cs_mapMasternodeBlocks;
@@ -990,5 +990,117 @@ private:
 }; 
 
 extern CMasternodeConfig masternodeConfig;
+
+// new masternodes
+
+enum CMNState {MN_PRE_ENABLED, MN_ENABLED, MN_EXPIRED, MN_DISABLED, MN_BAN};
+
+struct CMN {
+public:
+    COutPoint outpoint;         // uni
+    CService addr;              // check every 12 tick from sigTime
+    CScript scriptPayout;       // check every  1 tick
+    CPubKey pkMasternode;
+    int64_t sigTime;
+    std::vector<unsigned char> sig;
+
+    int nRegisteredHeight;      // memonly
+    int nLastPaidHeight;        // memonly
+    CMNState nState;            // memonly
+                                // отсутствие ноды +1 очко бана (первые 12 тиков не считается)
+                                // лишняя нода     +3 очка бана 
+                                // пропуск пинга > 12 блоков   + 1 очко бана
+    int nBanScore;              // memonly
+    int nLastCheckHeight;       // memonly
+
+    CMN () : outpoint(), addr(), scriptPayout(), pkMasternode(), sigTime(0), sig(), nState(MN_DISABLED) { };
+    CMN (COutPoint outpointNew, CService addrNew, CScript scriptPayoutNew, CPubKey pkMasternodeNew) :
+        outpoint(outpointNew), addr(addrNew), scriptPayout(scriptPayoutNew), pkMasternode(pkMasternodeNew), 
+        sigTime(0), sig(), nState(MN_DISABLED) { };
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(outpoint);
+        READWRITE(addr);
+        READWRITE(scriptPayout);
+        READWRITE(pkMasternode);
+        READWRITE(sigTime);
+        READWRITE(sig);
+    }
+
+    uint256 getHash () const;
+
+    bool check ();
+
+    bool sign ();
+
+    void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
+};
+
+class CMNVote {
+public:
+    uint256 mn_id;
+    uint256 block_id;
+    int64_t sigTime;
+    std::vector<unsigned char> sig;
+    int type;
+    std::vector<uint256> data;
+
+    CMNVote() : mn_id(), block_id(), sigTime(0), sig(), type(0), data() { }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(mn_id);
+        READWRITE(block_id);
+        READWRITE(sigTime);
+        READWRITE(sig);
+        READWRITE(type);
+        READWRITE(data);
+    }
+
+    uint256 getHash () const;
+
+    bool check ();
+
+    bool sign ();
+
+    void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
+};
+
+class CMNList {
+public:
+    CCriticalSection cs;
+    std::map<uint256, CMN> mapMasternodes;
+    std::map<uint256, CMN> mapOldMasternodes;
+    bool exist (const uint256& hash) {
+        LOCK (cs);
+        return (mapMasternodes.count(hash) == 0) && (mapOldMasternodes.count(hash) == 0);
+    }
+    void update (const CBlockIndex *pindex);
+    void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
+};
+
+class CMNVoteList {
+public:
+    CCriticalSection cs;
+    std::map<uint256, CMNVote> mapVotes;
+    std::map<uint256, CMNVote> mapOldVotes;
+    bool exist (const uint256& hash) {
+        LOCK (cs);
+        return (mapVotes.count(hash) == 0) && (mapOldVotes.count(hash) == 0);
+    }
+    void update (const CBlockIndex *pindex);
+    void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
+};
+
+extern uint256 activemn;
+
+extern CMNList mns;
+
+extern CMNVoteList mnvotes;
 
 #endif

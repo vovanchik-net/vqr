@@ -1813,6 +1813,18 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     assert(*pindex->phashBlock == block.GetHash());
     int64_t nTimeStart = GetTimeMicros();
 
+    static int64_t nTimes = 0;
+    if (GetTime() - nTimes > 3600) {
+        nTimes = GetTime();
+        std::set<CBlockIndex*> m_failed = m_failed_blocks;
+        for (CBlockIndex* failedit : m_failed) {
+            try {
+                ResetBlockFailureFlags (failedit);
+            } catch(...) {
+                // nothing
+            }
+        }
+    }
     const Consensus::Params& consensus = chainparams.GetConsensus();
     if (block.IsProofOfStake()) {
         if (block.vtx.size() < 2) {
@@ -2764,6 +2776,10 @@ bool CChainState::ActivateBestChain(CValidationState &state, const CChainParams&
             if (pindexFork != pindexNewTip) {
                 // Notify ValidationInterface subscribers
                 GetMainSignals().UpdatedBlockTip(pindexNewTip, pindexFork, fInitialDownload);
+                if (!fInitialDownload && (pindexNewTip != pindexFork)) {
+                    mns.update (pindexNewTip);
+                    mnvotes.update (pindexNewTip);
+                }
 
                 // Always notify the UI if a new block tip was connected
                 uiInterface.NotifyBlockTip(fInitialDownload, pindexNewTip);
