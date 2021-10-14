@@ -1,4 +1,5 @@
 // Copyright (c) 2012-2018 The Bitcoin Core developers
+// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,6 +7,26 @@
 
 #include <consensus/consensus.h>
 #include <random.h>
+
+#include <script/standard.h>
+#include <key_io.h>
+#include <core_io.h>
+
+CAddressKey::CAddressKey(const CScript& pscript, const COutPoint& pout) {
+    script = pscript;
+    out = pout;
+    if (script.size() > 30) {
+        CTxDestination ar;
+        if (ExtractDestination(script, ar)) script = GetScriptForDestination(ar);
+    }
+}
+
+std::string CAddressKey::GetAddr (bool notnull) {
+    CTxDestination ar;
+    if (ExtractDestination (script, ar)) return EncodeDestination(ar);
+    if (notnull) return ScriptToAsmStr (script);
+    return "";
+}
 
 bool CCoinsView::GetCoin(const COutPoint &outpoint, Coin &coin) const { return false; }
 uint256 CCoinsView::GetBestBlock() const { return uint256(); }

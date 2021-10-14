@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -323,14 +324,13 @@ struct CAddressKey {
         READWRITE(out);
     }
 
-    CAddressKey(const CScript& pscript, const COutPoint& pout) {
-        script = pscript;
-        out = pout;
-    }
+    CAddressKey(const CScript& pscript, const COutPoint& pout);
 
     CAddressKey() {
         SetNull();
     }
+
+    std::string GetAddr (bool notnull = false);
 
     void SetNull() {
         script.clear();
@@ -363,21 +363,21 @@ struct CAddressValue {
     }
 
     CAddressValue(CAmount pvalue, uint32_t pheight) {
+        SetNull();
         value = pvalue;
         height = pheight;
-        spend_height = 0;
-        spend_hash.SetNull();
-        spend_n = 0;
+    }
+
+    CAddressValue(CAmount pvalue, uint32_t pheight, uint32_t pspend_height, const uint256& pspend_hash, uint32_t pspend_n) {
+        value = pvalue;
+        height = pheight;
+        spend_height = pspend_height;
+        spend_hash = pspend_hash;
+        spend_n = pspend_n;
     }
 
     CAddressValue() {
         SetNull();
-    }
-
-    void addSpend (const uint256& pspend_hash, uint32_t pspend_n, uint32_t pspend_height) {
-        spend_hash = pspend_hash;
-        spend_n = pspend_n;
-        spend_height = pspend_height;
     }
 
     void SetNull() {

@@ -81,7 +81,7 @@ public:
 
         // By default assume that the signatures in ancestors of this block are valid.
         consensus.defaultAssumeValid =
-            uint256S("0x00"); // 0
+            uint256S("0x92c7ccfc6b522d45e7521882266b5001ac374417004fb1efa834b02179510602"); // 50000
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -117,7 +117,7 @@ public:
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
 
-        bech32_hrp = "vqr";
+        bech32_hrp = "";
 
         vFixedSeeds.clear();
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
@@ -128,7 +128,8 @@ public:
 
         checkpointData = {
             {
-                {0, uint256S("0x0000000bafe43d32dcc3f0ee1e6a685cd310527a30103cb1e8da79eac595a247")},
+                {    0, uint256S("0x0000000bafe43d32dcc3f0ee1e6a685cd310527a30103cb1e8da79eac595a247")},
+                {50000, uint256S("0x92c7ccfc6b522d45e7521882266b5001ac374417004fb1efa834b02179510602")},
             }
         };
 
@@ -197,7 +198,7 @@ public:
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94}; 
         
-        bech32_hrp = "test";
+        bech32_hrp = "";
 
         fDefaultConsistencyChecks = false;
         fRequireStandard = false;

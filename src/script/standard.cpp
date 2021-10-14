@@ -278,14 +278,18 @@ public:
     bool operator()(const WitnessV0KeyHash& id) const
     {
         script->clear();
-        *script << OP_0 << ToByteVector(id);
+        //*script << OP_0 << ToByteVector(id);
+        *script << OP_DUP << OP_HASH160 << ToByteVector(id) << OP_EQUALVERIFY << OP_CHECKSIG;
         return true;
     }
 
     bool operator()(const WitnessV0ScriptHash& id) const
     {
         script->clear();
-        *script << OP_0 << ToByteVector(id);
+        //*script << OP_0 << ToByteVector(id);
+        CScriptID scriptID;
+        CRIPEMD160().Write(scriptID.begin(), 32).Finalize(scriptID.begin());
+        *script << OP_HASH160 << ToByteVector(scriptID) << OP_EQUAL;
         return true;
     }
 

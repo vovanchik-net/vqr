@@ -98,7 +98,7 @@ QFont fixedPitchFont()
 
 // Generate a dummy address with invalid CRC, starting with the network prefix.
 static std::string DummyAddress(const CChainParams &params) {
-    return "TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi";
+    return "VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy";
 }
 
 void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent)

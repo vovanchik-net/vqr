@@ -121,8 +121,10 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("bsaveAddressForPoS", false);
     if (!settings.contains("bsaveChangeAddress"))
         settings.setValue("bsaveChangeAddress", false);
-    if (!m_node.softSetBoolArg("-stakerepeataddr", settings.value("bsaveAddressForPoS").toBool()))
+    if (gArgs.GetBoolArg("-stakerepeataddr", false) != settings.value("bsaveAddressForPoS").toBool()) {
         addOverriddenOption("-stakerepeataddr");
+        isStakeRepeatAddr = settings.value("bsaveAddressForPoS").toBool();
+    }
 #endif
 
     // Network
@@ -410,6 +412,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
         case saveAddressForPoS:
             if (settings.value("bsaveAddressForPoS") != value) {
                 settings.setValue("bsaveAddressForPoS", value);
+                isStakeRepeatAddr = settings.value("bsaveAddressForPoS").toBool();
             }
             break;
         case saveChangeAddress:

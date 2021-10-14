@@ -199,6 +199,7 @@ int nScriptCheckThreads = 0;
 std::atomic_bool fImporting(false);
 std::atomic_bool fReindex(false);
 bool fTxIndex = DEFAULT_TXINDEX;
+bool fAddressIndex = false;
 bool fHavePruned = false;
 bool fPruneMode = false;
 bool fIsBareMultisigStd = DEFAULT_PERMIT_BAREMULTISIG;
@@ -252,6 +253,8 @@ namespace {
 std::unique_ptr<CCoinsViewDB> pcoinsdbview;
 std::unique_ptr<CCoinsViewCache> pcoinsTip;
 std::unique_ptr<CBlockTreeDB> pblocktree;
+std::unique_ptr<CAddressIndexDB> pAddressIndex;
+bool isStakeRepeatAddr = false;
 
 enum class FlushStateMode {
     NONE,
@@ -1620,7 +1623,6 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
         return DISCONNECT_FAILED;
     }
 
-    std::vector<CAddressKey> addressKey;
     std::vector<std::pair<CAddressKey, CAddressValue>> addressKeyValue;
 
     // undo transactions in reverse order
@@ -1629,12 +1631,11 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
         uint256 hash = tx.GetHash();
         bool is_coinbase = tx.IsCoinBase();
 
-        if (fTxIndex) {
-            for (unsigned int k = tx.vout.size(); k-- > 0;) {
-                const CTxOut &out = tx.vout[k];
-                if (out.scriptPubKey.IsUnspendable()) continue;
-                addressKey.push_back(CAddressKey(out.scriptPubKey, COutPoint(hash, k)));
-            }
+        for (unsigned int k = tx.vout.size(); k-- > 0;) {
+            if (!fAddressIndex) break;
+            const CTxOut &out = tx.vout[k];
+            if (out.scriptPubKey.IsUnspendable()) continue;
+            addressKeyValue.push_back(std::make_pair(CAddressKey(out.scriptPubKey, COutPoint(hash, k)), CAddressValue()));
         }
 
         // Check that all outputs are available and match the outputs in the block itself
@@ -1662,23 +1663,17 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
                 int res = ApplyTxInUndo(std::move(txundo.vprevout[j]), view, out);
                 if (res == DISCONNECT_FAILED) return DISCONNECT_FAILED;
                 fClean = fClean && res != DISCONNECT_UNCLEAN;
-                if (fTxIndex) {
-                    const Coin &coin = view.AccessCoin(out);
-                    if (coin.out.scriptPubKey.IsUnspendable()) continue;
-                    addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, out), 
-                        CAddressValue(coin.out.nValue, coin.nHeight)));
-                }
+                if (!fAddressIndex) continue;
+                const Coin &coin = view.AccessCoin(out);
+                addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, out), 
+                    CAddressValue(coin.out.nValue, coin.nHeight)));
             }
             // At this point, all of txundo.vprevout should have been moved out.
         }
     }
 
-    if (fTxIndex) {
-        if (!pblocktree->EraseAddress(addressKey)) {
-            AbortNode("Failed to delete address");
-            return DISCONNECT_FAILED;
-        }
-        if (!pblocktree->WriteAddress(addressKeyValue)) {
+    if (pAddressIndex) {
+        if (!pAddressIndex->WriteAddress(addressKeyValue)) {
             AbortNode("Failed to write address");
             return DISCONNECT_FAILED;
         }
@@ -1994,14 +1989,12 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             }
         }
 
-        if (fTxIndex) {
-            for (size_t j = 0; j < tx.vin.size(); j++) {
-                const Coin& coin = view.AccessCoin(tx.vin[j].prevout);
-                if (coin.out.scriptPubKey.IsUnspendable()) continue;
-                CAddressValue addrval(coin.out.nValue, coin.nHeight);
-                addrval.addSpend (tx.GetHash(), j, pindex->nHeight);
-                addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, tx.vin[j].prevout), addrval));
-            }
+        for (size_t j = 0; j < tx.vin.size(); j++) {
+            if (!fAddressIndex) break;
+            const Coin& coin = view.AccessCoin(tx.vin[j].prevout);
+            CAddressValue addrval(coin.out.nValue, coin.nHeight, pindex->nHeight, tx.GetHash(), j);
+            if (!fTxIndex) addrval.height = 0;
+            addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, tx.vin[j].prevout), addrval));
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
@@ -2024,13 +2017,12 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             control.Add(vChecks);
         }
 
-        if (fTxIndex) {
-            for (unsigned int k = 0; k < tx.vout.size(); k++) {
-                const CTxOut &out = tx.vout[k];
-                if (out.scriptPubKey.IsUnspendable()) continue;
-                addressKeyValue.push_back(std::make_pair(CAddressKey(out.scriptPubKey, COutPoint(tx.GetHash(), k)),
-                    CAddressValue(out.nValue, pindex->nHeight)));
-            }
+        for (unsigned int k = 0; k < tx.vout.size(); k++) {
+            if (!fAddressIndex) break;
+            const CTxOut &out = tx.vout[k];
+            if (out.scriptPubKey.IsUnspendable()) continue;
+            addressKeyValue.push_back(std::make_pair(CAddressKey(out.scriptPubKey, COutPoint(tx.GetHash(), k)),
+                CAddressValue(out.nValue, pindex->nHeight)));
         }
 
         CTxUndo undoDummy;
@@ -2065,6 +2057,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (fJustCheck)
         return true;
 
+    mns.update_pay (block.GetHash(), pindex->nHeight, *(block.vtx[0]));
+
     if (!WriteUndoDataForBlock(blockundo, state, pindex, chainparams))
         return false;
 
@@ -2076,8 +2070,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (!WriteTxIndexDataForBlock(block, state, pindex))
         return false;
 
-    if (fTxIndex) {
-        if (!pblocktree->WriteAddress(addressKeyValue)) {
+    if (pAddressIndex) {
+        if (!pAddressIndex->WriteAddress(addressKeyValue)) {
             AbortNode("Failed to write address");
             return DISCONNECT_FAILED;
         }
@@ -2776,10 +2770,8 @@ bool CChainState::ActivateBestChain(CValidationState &state, const CChainParams&
             if (pindexFork != pindexNewTip) {
                 // Notify ValidationInterface subscribers
                 GetMainSignals().UpdatedBlockTip(pindexNewTip, pindexFork, fInitialDownload);
-                if (!fInitialDownload && (pindexNewTip != pindexFork)) {
-                    mns.update (pindexNewTip);
-                    mnvotes.update (pindexNewTip);
-                }
+
+                if (!fInitialDownload && (pindexNewTip != pindexFork)) mns.tick (pindexNewTip);
 
                 // Always notify the UI if a new block tip was connected
                 uiInterface.NotifyBlockTip(fInitialDownload, pindexNewTip);
@@ -4035,6 +4027,8 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams) EXCLUSIVE_LOCKS_RE
     // Check whether we have a transaction index
     pblocktree->ReadFlag("txindex", fTxIndex);
     LogPrintf("%s: transaction index %s\n", __func__, fTxIndex ? "enabled" : "disabled"); 
+    pblocktree->ReadFlag("addressindex", fAddressIndex);
+    LogPrintf("%s: address index %s\n", __func__, fAddressIndex ? "enabled" : "disabled"); 
 
     return true;
 }
@@ -4321,6 +4315,8 @@ bool LoadBlockIndex(const CChainParams& chainparams)
         // Use the provided setting for -txindex in the new database
         fTxIndex = gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX);
         pblocktree->WriteFlag("txindex", fTxIndex);
+        fAddressIndex = gArgs.GetBoolArg("-addressindex", false);
+        pblocktree->WriteFlag("addressindex", fAddressIndex);
     }
     return true;
 }

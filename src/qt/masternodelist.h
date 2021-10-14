@@ -32,11 +32,11 @@ public:
     ~MasternodeList();
 
     enum {
-        COLUMN_SERVICE,
+//        COLUMN_SERVICE,
+        COLUMN_PAYOUT_ADDRESS,
         COLUMN_STATUS,
         COLUMN_LASTSEEN,
         COLUMN_LASTPAID,
-        COLUMN_PAYOUT_ADDRESS,
         COLUMN_OUTPOINT,
     };
 

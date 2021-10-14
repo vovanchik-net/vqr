@@ -3151,7 +3151,33 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
     int32_t nCoinStakeTime = header.nTime;
     // Choose coins to use
     std::vector<COutput> vCoins;
-    AvailableCoins(vCoins, true, nullptr, 0);
+    for (const auto& entry : mapWallet) {
+        const uint256& wtxid = entry.first;
+        static std::set<uint256> emptytx;
+        if (emptytx.count(wtxid) > 0) continue;
+        const CWalletTx* pcoin = &entry.second;
+        if (!CheckFinalTx(*pcoin->tx)) continue;
+        if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0) continue;
+        int nDepth = pcoin->GetDepthInMainChain();
+        if (nDepth < 0) continue;
+        if (nDepth == 0 && !pcoin->InMempool()) continue;
+        bool safeTx = pcoin->IsTrusted();
+        if (nDepth == 0 && pcoin->mapValue.count("replaces_txid")) { safeTx = false; }
+        if (nDepth == 0 && pcoin->mapValue.count("replaced_by_txid")) { safeTx = false; }
+        if (!safeTx) continue;
+        int cnt = 0;
+        for (unsigned int i = 0; i < pcoin->tx->vout.size(); i++) {
+            if (IsLockedCoin(entry.first, i)) continue;
+            if (IsSpent(wtxid, i)) continue;
+            isminetype mine = IsMine(pcoin->tx->vout[i]);
+            if (mine == ISMINE_NO) continue;
+            bool solvable = IsSolvable(*this, pcoin->tx->vout[i].scriptPubKey);
+            bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO);
+            vCoins.push_back(COutput(pcoin, i, nDepth, spendable, solvable, safeTx));
+            cnt++;
+        }
+        if (cnt == 0) emptytx.insert(wtxid);
+    }
     LogPrint(BCLog::SELECTCOINS, "        Total select coin = %d\n", vCoins.size());
     CAmount nCredit = 0;
     static std::map<uint256, uint64_t> cachedCoins; 
@@ -3177,7 +3203,7 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
                 cachedCoins.erase (pcoin.outpoint.hash);      // erase from cache
                 
                 CScript scriptPubKeyOut;
-                if (gArgs.GetBoolArg("-stakerepeataddr", false)) {
+                if (isStakeRepeatAddr) {
                     scriptPubKeyOut = pcoin.txout.scriptPubKey;
                 } else {
                     CPubKey vchPubKey;
@@ -3189,7 +3215,7 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
                     scriptPubKeyOut = GetScriptForDestination(GetDestinationForKey(vchPubKey, DEFAULT_ADDRESS_TYPE));
                 }
                 txNew.vout.push_back(CTxOut(0, scriptPubKeyOut));
-                if (pcoin.txout.nValue > 500 * COIN) txNew.vout.push_back(CTxOut(0, scriptPubKeyOut));
+                if (pcoin.txout.nValue > 1000 * COIN) txNew.vout.push_back(CTxOut(0, scriptPubKeyOut));
                 break;
             }
         }
@@ -3549,7 +3575,7 @@ bool CWallet::TopUpKeyPool(unsigned int kpSize)
     {
         LOCK(cs_wallet);
 
-        if (IsLocked())
+        if (IsLocked(fUsedPoS))
             return false;
 
         // Top up key pool

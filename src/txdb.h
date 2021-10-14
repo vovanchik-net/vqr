@@ -120,12 +120,17 @@ public:
     void ReadReindexing(bool &fReindexing);
     bool ReadTxIndex(const uint256 &txid, CDiskTxPos &pos);
     bool WriteTxIndex(const std::vector<std::pair<uint256, CDiskTxPos> > &vect);
-    bool WriteAddress (const std::vector<std::pair<CAddressKey, CAddressValue>> &vec);
-    bool EraseAddress (const std::vector<          CAddressKey                > &vec);
-    bool ReadAddress (const CScript& script, std::vector<std::pair<CAddressKey, CAddressValue>> &vec);
     bool WriteFlag(const std::string &name, bool fValue);
     bool ReadFlag(const std::string &name, bool &fValue);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex);
+};
+
+class CAddressIndexDB : public CDBWrapper
+{
+public:
+    explicit CAddressIndexDB(bool fWipe);
+    bool WriteAddress (const std::vector<std::pair<CAddressKey, CAddressValue>> &vec);
+    bool ReadAddress (const CScript& script, std::vector<std::pair<CAddressKey, CAddressValue>> &vec);
 };
 
 #endif // BITCOIN_TXDB_H

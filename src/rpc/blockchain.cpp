@@ -2229,8 +2229,12 @@ UniValue dumpcoin (const JSONRPCRequest& request) {
     UniValue ret(UniValue::VOBJ);
     if (!toInt64 (request, 0, border, ret)) return ret;
 
-    CCoinsViewDB pcoinsdbview2(0);
-    std::unique_ptr<CCoinsViewCursor> pcursor(pcoinsdbview2.Cursor());	
+    std::unique_ptr<CCoinsViewCursor> pcursor;
+    {
+        LOCK(cs_main);
+        FlushStateToDisk();
+        pcursor = std::unique_ptr<CCoinsViewCursor>(pcoinsdbview->Cursor());
+    }
     while (pcursor->Valid()) {
         COutPoint key;
         Coin coin;
@@ -2365,14 +2369,6 @@ void show_log (const int data[9], int& count, const uint64_t sdata[9], uint64_t&
 	logWrite(strprintf(" >1000 COIN =  %d (%s), sum = %s", data[9], show_prc (data[9], count), FormatMoney(sdata[9])));
 }
 
-void set_pref (std::string Pubkey, std::string Script, std::string Bech) {
-	std::vector<unsigned char> Data1 (ParseHex(Pubkey));
-    const_cast<std::vector<unsigned char>&>(Params().Base58Prefix(CChainParams::PUBKEY_ADDRESS)) = Data1;
-	std::vector<unsigned char> Data2 (ParseHex(Script));
-    const_cast<std::vector<unsigned char>&>(Params().Base58Prefix(CChainParams::SCRIPT_ADDRESS)) = Data2;
-    const_cast<std::string&>(Params().Bech32HRP()) = Bech;
-}
-
 static int cntArr[10][10] = { 0 };
 static uint64_t sumArr[10][10] = { 0 };
 
@@ -2411,57 +2407,47 @@ UniValue dumpaddress (const JSONRPCRequest& request) {
         );
     int cnt1 = 0;
     int cnt2 = 0;
-    int limit = 8;
+    int limit = 11;
     for(int i=0; i<10; i++) { // UNK, HASH160, SCRIPT, PUBKEY, MultiHASH160, Withness_HASH160, Withness_SCRIPT
         for(int j=0; j<10; j++) { cntArr[i][j] = 0; sumArr[i][j] = 0; }
     }
 
-    std::string ct = "self";
-    if (!request.params[0].isNull()) { 
-        ct = request.params[0].get_str();
-        if (ct == "btc") { set_pref ("00", "05", "bc"); } else
-        if (ct == "ltc") { set_pref ("30", "05", "ltc"); } else
-        if (ct == "doge") { set_pref ("1E", "16", "doge"); limit = 9; } else
-            ct = "self";
-    }
-    bool dump = false;
-    if (!request.params[1].isNull()) { 
-        std::string ctt = request.params[1].get_str();
-        if (ctt == "dump") dump = true;
-    }
     std::unordered_map<std::string, std::pair<CAmount, int>> mapAddr;
 
-    CCoinsViewDB pcoinsdbview2(0);
-    std::unique_ptr<CCoinsViewCursor> pcursor(pcoinsdbview2.Cursor());	
+    std::unique_ptr<CCoinsViewCursor> pcursor;
+    {
+        LOCK(cs_main);
+        FlushStateToDisk();
+        pcursor = std::unique_ptr<CCoinsViewCursor>(pcoinsdbview->Cursor());
+    }
     while (pcursor->Valid()) {
         COutPoint key;
         Coin coin;
         if (pcursor->GetKey(key) && pcursor->GetValue(coin) && (!coin.IsSpent())) {
             if (doCalcAndMode (coin.out, key, limit)) { setProgress (++cnt1, ++cnt2); } 
                                                  else { setProgress (++cnt1, -1); }
-            if (dump) {
-                std::string addr = scriptToAddr (coin.out.scriptPubKey);
-                std::pair<CAmount, int> pp;
-                if (mapAddr.count(addr) > 0) { pp = mapAddr[addr]; } else { pp = {0, 0}; }
-                pp.first += coin.out.nValue;
-                pp.second ++;
-                mapAddr[addr] = pp;
-            }
+            std::string addr = scriptToAddr (coin.out.scriptPubKey);
+            std::pair<CAmount, int> pp;
+            if (mapAddr.count(addr) > 0) { pp = mapAddr[addr]; } else { pp = {0, 0}; }
+            pp.first += coin.out.nValue;
+            pp.second ++;
+            mapAddr[addr] = pp;
         }
         pcursor->Next();
         if (ShutdownRequested()) break;
     }
-    if (ct != "self") set_pref ("41", "32", "vqr");    
     setProgress (0, 0);
 
-    if (dump) {
-        for (const auto& entry : mapAddr) {
-            std::pair<CAmount, int> pp = entry.second;
-            if (pp.first > 0) 
-                logWrite (strprintf("%s = %s (%d)", entry.first, FormatMoney(pp.first), pp.second));
-        }
-        setProgress (0, 0);
+    std::vector < std::pair<std::string, std::pair<CAmount, int> > > vec (mapAddr.begin(), mapAddr.end());
+    std::sort(vec.begin(), vec.end(), [](std::pair<std::string, std::pair<CAmount, int> > lhs, 
+                                         std::pair<std::string, std::pair<CAmount, int> > rhs) {return lhs.second.first > rhs.second.first; });
+
+    for (const auto& entry : vec) {
+        std::pair<CAmount, int> pp = entry.second;
+        if (pp.first > 0) 
+             logWrite (strprintf("%s = %s (%d)", entry.first, FormatMoney(pp.first), pp.second));
     }
+    setProgress (0, 0);
 
     int count[7];
     uint64_t scount[7];
@@ -2469,8 +2455,6 @@ UniValue dumpaddress (const JSONRPCRequest& request) {
     logWrite (" ===   SCRIPT   === ");          show_log (cntArr[2], count[2], sumArr[2], scount[2]);
     logWrite (" ===   PUBKEY   === ");          show_log (cntArr[3], count[3], sumArr[3], scount[3]);
     logWrite (" ===   MultiHASH160   === ");    show_log (cntArr[4], count[4], sumArr[4], scount[4]);
-    logWrite (" ===   Withness_HASH160   === ");show_log (cntArr[5], count[5], sumArr[5], scount[5]);
-    logWrite (" ===   Withness_SCRIPT   === "); show_log (cntArr[6], count[6], sumArr[6], scount[6]);
     logWrite (" ===   UNK   === ");             show_log (cntArr[0], count[0], sumArr[0], scount[0]);
 
     logWrite (" ===   TOTAL   ===");
@@ -2479,9 +2463,7 @@ UniValue dumpaddress (const JSONRPCRequest& request) {
     logWrite (strprintf(" SCRIPT           = %d (%s), sum = %s", count[2], show_prc (count[2], total), FormatMoney(scount[2])));
     logWrite (strprintf(" PUBKEY           = %d (%s), sum = %s", count[3], show_prc (count[3], total), FormatMoney(scount[3])));
     logWrite (strprintf(" MultiHASH160     = %d (%s), sum = %s", count[4], show_prc (count[4], total), FormatMoney(scount[4])));
-    logWrite (strprintf(" Withness_HASH160 = %d (%s), sum = %s", count[5], show_prc (count[5], total), FormatMoney(scount[5])));
-    logWrite (strprintf(" Withness_SCRIPT  = %d (%s), sum = %s", count[6], show_prc (count[6], total), FormatMoney(scount[6])));
-    logWrite (strprintf(" UNK              = %d (%s), sum = %s", count[7], show_prc (count[7], total), FormatMoney(scount[7])));
+    logWrite (strprintf(" UNK              = %d (%s), sum = %s", count[0], show_prc (count[0], total), FormatMoney(scount[0])));
 
     logWrite ("");
     uint64_t stotal = scount[1] + scount[2] + scount[3] + scount[4] + scount[5] + scount[6] + scount[0];

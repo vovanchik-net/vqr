@@ -758,13 +758,6 @@ void Misbehaving(NodeId pnode, int howmuch, const std::string& message) EXCLUSIV
         LogPrint(BCLog::NET, "%s: %s peer=%d (%d -> %d)%s\n", __func__, state->name, pnode, state->nMisbehavior-howmuch, state->nMisbehavior, message_prefixed);
 }
 
-
-
-
-
-
-
-
 //////////////////////////////////////////////////////////////////////////////
 //
 // blockchain -> download logic notification
@@ -1454,8 +1447,14 @@ bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::ve
             // Headers message had its maximum size; the peer may have more headers.
             // TODO: optimize: if pindexLast is an ancestor of chainActive.Tip or pindexBestHeader, continue
             // from there instead.
-            LogPrint(BCLog::NET, "more getheaders (%d) to end to peer=%d (startheight:%d)\n", pindexLast->nHeight, pfrom->GetId(), pfrom->nStartingHeight);
-            connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::GETHEADERS, chainActive.GetLocator(pindexLast), uint256()));
+            if ((pfrom->nLastHeightRequests == pindexLast->nHeight) && (GetTime() - pfrom->nLastTimeRequests < 120)) {
+                LogPrint(BCLog::NET, "dropped more getheaders (%d) to end to peer=%d (startheight:%d)\n", pindexLast->nHeight, pfrom->GetId(), pfrom->nStartingHeight);
+            } else {
+                LogPrint(BCLog::NET, "more getheaders (%d) to end to peer=%d (startheight:%d)\n", pindexLast->nHeight, pfrom->GetId(), pfrom->nStartingHeight);
+                connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::GETHEADERS, chainActive.GetLocator(pindexLast), uint256()));
+                pfrom->nLastHeightRequests = pindexLast->nHeight;
+                pfrom->nLastTimeRequests = GetTime();
+            }
         }
 
         bool fCanDirectFetch = CanDirectFetch(chainparams.GetConsensus());
@@ -2582,12 +2581,11 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         // message would be undesirable as we transmit it ourselves.
     }
 
-    else if (strCommand == "MN_ANNOUNCE") {
+    else if (strCommand == "MN_DECL") {
         uint256 hash;
         vRecv >> hash;
-        if (!mns.exist(hash)) {
+        if (!mns.exist(hash)) 
             connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make("MN_GET", hash));
-        }
     }
 
     else if (strCommand == "MN_GET") {
@@ -2596,7 +2594,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         LOCK (mns.cs);
         CNetMsgMaker msgMaker(pfrom->GetSendVersion());
         for (const auto& mn : mns.mapMasternodes) {
-            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("MN_ANNOUNCE", mn.first));
+            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("MN_DECL", mn.first));
             if (hash == mn.first)  connman->PushMessage(pfrom, msgMaker.Make("MN_PUT", mn.second));
         }
     }
@@ -2604,58 +2602,45 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
     else if (strCommand == "MN_PUT") {
         CMN mn;
         vRecv >> mn;
+        uint256 id = mn.hash();
+        if (mns.exist(id)) return true;
+        bool valid = mn.check();
+        mns.add (id, mn, valid);
+        if (!valid) return true;
+        connman->ForEachNode([&connman, &id](CNode* pnode) {
+            connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_DECL", id));
+        });
+    }
+
+    else if (strCommand == "VOTE_DECL") {
+        uint256 hash;
+        vRecv >> hash;
+        if (!mns.vote_exist(hash))
+            connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make("VOTE_GET", hash));
+    }
+
+    else if (strCommand == "VOTE_GET") {
+        uint256 hash;
+        vRecv >> hash;
         LOCK (mns.cs);
-        if (mn.check()) {
-            uint256 hash = mn.getHash();
-            for (const auto& mmn : mns.mapMasternodes) {
-                if (mmn.second.outpoint == mn.outpoint) {
-                    mns.mapOldMasternodes[mmn.first] = mmn.second;
-                    mns.mapMasternodes.erase(mmn.first);
-                }
-            }
-            mns.mapMasternodes[hash] = mn;
-            g_connman->ForEachNode([&connman, &hash](CNode* pnode) {
-                connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_ANNOUNCE", hash));
-            });
-        } else {
-            uint256 hash = mn.getHash();
-            mns.mapOldMasternodes[hash] = mn;
-        }
-    }
-
-    else if (strCommand == "MN_VOTE_ANNOUNCE") {
-        uint256 hash;
-        vRecv >> hash;
-        if (!mnvotes.exist(hash)) {
-            connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make("MN_VOTE_GET", hash));
-        }
-    }
-
-    else if (strCommand == "MN_VOTE_GET") {
-        uint256 hash;
-        vRecv >> hash;
-        LOCK (mnvotes.cs);
         CNetMsgMaker msgMaker(pfrom->GetSendVersion());
-        for (const auto& mn : mnvotes.mapVotes) {
-            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("MN_VOTE_ANNOUNCE", mn.first));
-            if (hash == mn.first)  connman->PushMessage(pfrom, msgMaker.Make("MN_VOTE_PUT", mn.second));
+        for (const auto& mn : mns.mapVotes) {
+            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("VOTE_DECL", mn.first));
+            if (hash == mn.first)  connman->PushMessage(pfrom, msgMaker.Make("VOTE_PUT", mn.second));
         }
     }
 
-    else if (strCommand == "MN_VOTE_PUT") {
-        CMNVote mn;
-        vRecv >> mn;
-        LOCK (mnvotes.cs);
-        if (mn.check()) {
-            uint256 hash = mn.getHash();
-            mnvotes.mapVotes[hash] = mn;
-            g_connman->ForEachNode([&connman, &hash](CNode* pnode) {
-                connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_VOTE_ANNOUNCE", hash));
-            });
-        } else {
-            uint256 hash = mn.getHash();
-            mnvotes.mapOldVotes[hash] = mn;
-        }
+    else if (strCommand == "VOTE_PUT") {
+        CMNVote vote;
+        vRecv >> vote;
+        uint256 id = vote.hash();
+        if (mns.vote_exist(id)) return true;
+        bool valid = vote.check();
+        mns.vote_add (id, vote, valid);
+        if (!valid) return true;
+        connman->ForEachNode([&connman, &id](CNode* pnode) {
+            connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("VOTE_DECL", id));
+        });
     }
 
     else {

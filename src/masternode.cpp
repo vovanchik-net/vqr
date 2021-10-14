@@ -4070,96 +4070,272 @@ bool CMasternodeConfig::write(std::string& strErrRet) {
 
 uint256 activemn;
 
-CMNList mns;
-
-uint256 CMN::getHash () const {
+uint256 CMN::hash () const {
     CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
     ::Serialize(writer, *this);
     return writer.GetHash();
 }
 
 bool CMN::check () {
+    uint256 hash2 = hash();
+    int height = chainActive.Height();
+    nState = MN_DISABLED;
+    // check outpoint
+    Coin coin;
+    if (!GetUTXOCoin(outpoint, coin))
+        return error("CMN::check: output %s is spent for masternode %s.\n", outpoint.ToString(), hash2.ToString());
+    if (coin.out.nValue != Params().GetConsensus().nMasternodeAmountLock * COIN)
+        return error("CMN::check: output %s has wrong balance for masternode %s.\n", outpoint.ToString(), hash2.ToString());
+    scriptPayout = coin.out.scriptPubKey;
+    // check sign
+    if (nRegisteredHeight == 0) {
+        CPubKey pk;
+        if (!pk.RecoverCompact(hash2, sig))
+            return error("CMN::check: check sign error\n");
+        if (GetScriptForDestination(pk.GetID()) != scriptPayout)
+            return error("CMN::check: check sign address error\n");
+        CBlockIndex* sigBlock = LookupBlockIndex(block_id);
+        if (!sigBlock)
+            return error("CMN::check: error sigTime for masternode %s.\n", hash2.ToString());
+        nRegisteredHeight = sigBlock->nHeight;
+    }
+    if (nRegisteredHeight - coin.nHeight < 12)
+        return error("CMN::check: masternode %s is very young.\n", hash2.ToString());
+    // check addr
+    if (!(addr.IsIPv4() && IsReachable(addr) && addr.IsRoutable()))
+        return error("CMN::check: error external address for masternode %s.\n", hash2.ToString());
+    if (fMasternodeMode && (activemn != uint256()) && (activemn != hash2) && (((height - nRegisteredHeight) % 12) == 0)) {
+
+        // connect
+    }
+    // update last pay
+    mns.update_lastpay (scriptPayout, nLastPaidHeight);
+    nState = MN_ENABLED;
+//    int nBanScore;              // memonly
     return true;
 }
 
 bool CMN::sign () {
-    sigTime = GetAdjustedTime();
+    CKey keyAddress;
+    if (GetWallets().size() == 0)
+        return error("CMN::sign: Could not allocate outpoint %s for masternode %s.\n", outpoint.ToString(), addr.ToString());
+    std::shared_ptr<CWallet> pwallet = GetWallets()[0];
+    if (!pwallet)
+        return error("CMN::sign: Could not allocate outpoint %s for masternode %s..\n", outpoint.ToString(), addr.ToString());
+    CCoinData cd = pwallet->findCoin (outpoint);
+    if (cd.IsNull())
+        return error("CMN::sign: Could not allocate outpoint %s for masternode %s...\n", outpoint.ToString(), addr.ToString());
+    CTxDestination address;
+    ExtractDestination(cd.getScript(), address);
+    CKeyID *keyid = boost::get<CKeyID>(&address);
+    if (!keyid)
+        return error("CMN::sign: Could not allocate outpoint %s for masternode %s....\n", outpoint.ToString(), addr.ToString());
+    if (!pwallet->GetKey(*keyid, keyAddress))
+        return error("CMN::sign: Private key for address is not known\n");
+    block_id = chainActive.Tip()->GetAncestor(chainActive.Height() - 24)->GetBlockHash();
     CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
-    writer << outpoint << addr << scriptPayout << pkMasternode << sigTime;
+    writer << outpoint << addr << pkMasternode << block_id;
     uint256 hash2 = writer.GetHash();
-    if (!CHashSigner::SignHash(hash2, activeMasternode.keyMasternode, sig)) return false;
-    std::string strError;
-    if (!CHashSigner::VerifyHash(hash2, activeMasternode.pubKeyMasternode, sig, strError)) return false;
+    // sign
+    if (!keyAddress.SignCompact(hash2, sig)) 
+        return error("CMN::sign: make sign error\n");
     return true;
 }
 
 void CMN::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
     dumpfunc(border + outpoint.ToString() + " {");
+    dumpfunc(border + "    output = " + HexStr(outpoint.hash) + " : " + itostr(outpoint.n));
     dumpfunc(border + "    address = " + addr.ToString());
+    dumpfunc(border + "    pkMasternode = " + HexStr(pkMasternode.begin(), pkMasternode.end()));
     CTxDestination address;
     if (ExtractDestination(scriptPayout, address))
         dumpfunc(border + "    pay_addr = " + EncodeDestination(address));
+    dumpfunc(border + "    block = " + HexStr(block_id));
+    dumpfunc(border + "    block_n = " + itostr(nRegisteredHeight));
+    dumpfunc(border + "    lastpaidblock = " + itostr(nLastPaidHeight));
 //      dumpfunc(border + "    status = " + GetStatus());
-    dumpfunc(border + "    firstseen = " + EasyFormatDateTime(sigTime));
 //      dumpfunc(border + "    lastseen = " + EasyFormatDateTime(lastPing.sigTime));
 //      dumpfunc(border + "    activeseconds = " + itostr(lastPing.sigTime - sigTime));
 //      dumpfunc(border + "    lastpaidtime = " + EasyFormatDateTime(GetLastPaidTime()));
-    dumpfunc(border + "    lastpaidblock = " + itostr(nLastPaidHeight));
-    dumpfunc(border + "    output = " + HexStr(outpoint.hash) + " : " + itostr(outpoint.n));
     dumpfunc(border + "}");
 }
 
-void CMNList::update (const CBlockIndex *pindex) {
+uint256 CMNVote::hash () const {
+    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
+    ::Serialize(writer, *this);
+    return writer.GetHash();
+}
+
+bool CMNVote::check () {
+    return true;
+}
+
+bool CMNVote::sign () {
+    block_id = chainActive.Tip()->GetAncestor(chainActive.Height() - 24)->GetBlockHash();
+    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
+    writer << mn_id << block_id << type << data;
+    uint256 hash2 = writer.GetHash();
+    // sign
+    if (!activeMasternode.keyMasternode.SignCompact(hash2, sig)) 
+        return error("CMNVote::sign: make sign error\n");
+    // check
+    CPubKey pubkeyFromSig;
+    if (!pubkeyFromSig.RecoverCompact(hash2, sig))
+        return error("CMNVote::sign: check sign error\n");
+    if (pubkeyFromSig != activeMasternode.pubKeyMasternode)
+        return error("CMN::sign: check sign address error\n");
+}
+
+void CMNVote::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
+    dumpfunc(border + HexStr(hash()) + " {");
+    dumpfunc(border + "    id = " + HexStr(mn_id));
+    dumpfunc(border + "    block = " + HexStr(block_id));
+    dumpfunc(border + "    block_n = " + itostr(nHeight));
+    dumpfunc(border + "    type = " + itostr(type));
+    dumpfunc(border + "    data = {");
+    for (auto& item : data)
+        dumpfunc(border + "    " + HexStr(item) + ", ");
+    dumpfunc(border + "    }");
+    dumpfunc(border + "}");
+}
+
+bool CMNList::exist (const uint256& hash) {
+    LOCK (cs);
+    return (mapMasternodes.count(hash) != 0) || (mapOldMasternodes.count(hash) != 0);
+}
+
+bool CMNList::vote_exist (const uint256& hash) {
+    LOCK (cs);
+    return (mapVotes.count(hash) != 0) || (mapOldVotes.count(hash) != 0);
+}
+
+void CMNList::add (const uint256& id, CMN& mn, bool valid) {
+    LOCK (cs);
+    if (valid) {
+        for (const auto& it : mapMasternodes) {
+            if (it.second.outpoint == mn.outpoint) {
+                mapOldMasternodes[it.first] = it.second;
+                mapMasternodes.erase(it.first);
+            }
+        }
+        mapMasternodes[id] = mn;
+        // check votes_error array for mismach
+    } else {
+        mapOldMasternodes[id] = mn;
+    }
+}
+
+void CMNList::vote_add (const uint256& id, CMNVote& vote, bool valid) {
+    LOCK (cs);
+    if (valid) {
+        mapVotes[id] = vote;
+    } else {
+        mapOldVotes[id] = vote;
+    }
+}
+
+void CMNList::tick (const CBlockIndex *pindex) {
+    {
+        LOCK (cs);
+        for (auto& mn : mapMasternodes) 
+            mn.second.check ();
+    }
     if ((activemn == uint256()) && fMasternodeMode) {
         {
-            LOCK (mns.cs);
-            for (const auto& mn : mns.mapMasternodes) {
+            LOCK (cs);
+            for (const auto& mn : mapMasternodes) {
                 if (mn.second.outpoint != activeMasternode.outpoint) continue;
                 activemn = mn.first;
                 break;
             }
         }
         if (activemn == uint256()) {
-            CMasternode mnnn;
-            mnodeman.Get(activeMasternode.outpoint, mnnn);
-            CMN mn;
-            mn.outpoint = activeMasternode.outpoint;
-            mn.addr = activeMasternode.service;
-            mn.scriptPayout = mnnn.GetPayScript();
-            mn.pkMasternode = activeMasternode.pubKeyMasternode;
+            CMN mn(activeMasternode.outpoint, activeMasternode.service, activeMasternode.pubKeyMasternode);
             mn.sign ();
-            activemn = mn.getHash();
-            {
-                LOCK (mns.cs);
-                mns.mapMasternodes[activemn] = mn;
+            bool valid = mn.check();
+            if (!valid) {
+                LogPrintf("CMNList::tick: mn generation error for masternode %s.\n", mn.hash().ToString());
+                return;
             }
+            activemn = mn.hash();
+            mns.add (activemn, mn, valid);
             CConnman& connman = *g_connman;
             connman.ForEachNode([&connman](CNode* pnode) {
-                connman.PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_ANNOUNCE", activemn));
+                connman.PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_DECL", activemn));
             });
         }
     }
-    if ((activemn != uint256()) && (chainActive.Height() > 48)) {
+    if ((activemn != uint256()) && (chainActive.Height() > MN_start)) {
         CMNVote newvote;
         newvote.mn_id = activemn;
-        newvote.block_id = pindex->GetAncestor(pindex->nHeight - 24)->GetBlockHash();
         newvote.type = 1;
         {
-            LOCK (mns.cs);
-            for (const auto& mn : mns.mapMasternodes) {
-                if (mn.first != newvote.mn_id) newvote.data.push_back(mn.first);
+            LOCK (cs);
+            for (const auto& mn : mapMasternodes) {
+                if ((mn.first != newvote.mn_id) && (mn.second.nState == MN_ENABLED))
+                    newvote.data.push_back(mn.first);
             }
         }
         newvote.sign ();
-        uint256 hash = newvote.getHash();
-        {
-            LOCK (mnvotes.cs);
-            mnvotes.mapVotes[hash] = newvote;
+        uint256 id = newvote.hash();
+        bool valid = newvote.check();
+        if (!valid) {
+            LogPrintf("CMNList::tick: vote generation error for masternode %s.\n", activemn.ToString());
+            return;
         }
+        mns.vote_add (id, newvote, valid);
         CConnman& connman = *g_connman;
-        connman.ForEachNode([&connman, &hash](CNode* pnode) {
-            connman.PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_VOTE_ANNOUNCE", hash));
+        connman.ForEachNode([&connman, &id](CNode* pnode) {
+            connman.PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("VOTE_DECL", id));
         });
+    }
+}
+
+void CMNList::update_pay (const uint256 &block_hash, int height, const CTransaction &tx) {
+    CAmount nMasternodePayment = (tx.GetValueOut() * Params().GetConsensus().nMasternodePaymentsPercent) / 100;
+    int nb = mapMasternodes.size();
+    if (nb < 100) nb = 100;
+    nb <<= 3;
+    for (const auto& txout : tx.vout) {
+        if (nMasternodePayment != txout.nValue) continue;
+        LOCK (cs_pay);
+        int curr = chainActive.Height();
+        for (const auto& it : mapPayouts) {
+            if (curr - it.second.second > nb) mapPayouts.erase(it.first);
+        }
+        mapPayouts[block_hash] = std::make_pair(txout.scriptPubKey, height);
+        break;
+    }
+}
+
+void CMNList::update_lastpay (const CScript &addr, int &height) {
+    if (chainActive.Height() < MN_start) return;
+    int nb = mapMasternodes.size();
+    if (nb < 100) nb = 100;
+    nb <<= 1;
+    LOCK (cs_pay);
+    if (mapPayouts.size() < nb) {
+        CBlockIndex* tip = chainActive.Tip();
+        int count = nb << 1;
+        while ((count-- > 0) && tip) {
+            CBlock block;
+            if (ReadBlockFromDisk(block, tip, Params().GetConsensus())) {
+                CAmount nPayment = (block.vtx[0]->GetValueOut() * Params().GetConsensus().nMasternodePaymentsPercent) / 100;
+                for (const auto& txout : block.vtx[0]->vout) {
+                    if (nPayment != txout.nValue) continue;
+                    mapPayouts[tip->GetBlockHash()] = std::make_pair(txout.scriptPubKey, tip->nHeight);
+                    break;
+                }
+            }
+            tip = tip->pprev;
+        }
+    }
+    CBlockIndex* tip = chainActive.Tip();
+    for (const auto& it : mapPayouts) {
+        if ((it.second.first == addr) && (it.second.second > height)) {
+            CBlockIndex* bi = tip->GetAncestor(it.second.second);
+            if (bi && (bi->GetBlockHash() == it.first)) height = it.second.second;
+        }
     }
 }
 
@@ -4173,52 +4349,6 @@ void CMNList::dump (const std::string& border, std::function<void(std::string)> 
     for (auto& item : mapOldMasternodes)
         item.second.dump (border + "        ", dumpfunc);
     dumpfunc(border + "}");
-}
-
-CMNVoteList mnvotes;
-
-uint256 CMNVote::getHash () const {
-    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
-    ::Serialize(writer, *this);
-    return writer.GetHash();
-}
-
-bool CMNVote::check () {
-    return true;
-}
-
-bool CMNVote::sign () {
-    sigTime = GetAdjustedTime();
-    CHashWriter writer(SER_GETHASH, PROTOCOL_VERSION);
-    writer << mn_id << block_id << sigTime << type << data;
-    uint256 hash2 = writer.GetHash();
-    if (!CHashSigner::SignHash(hash2, activeMasternode.keyMasternode, sig)) return false;
-    std::string strError;
-    if (!CHashSigner::VerifyHash(hash2, activeMasternode.pubKeyMasternode, sig, strError)) return false;
-    return true;
-}
-
-void CMNVote::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
-    dumpfunc(border + HexStr(getHash()) + " {");
-    dumpfunc(border + "    id = " + HexStr(mn_id));
-    dumpfunc(border + "    block = " + HexStr(block_id));
-    dumpfunc(border + "    time = " + EasyFormatDateTime(sigTime));
-    dumpfunc(border + "    type = " + itostr(type));
-    dumpfunc(border + "    data = {");
-    for (auto& item : data)
-        dumpfunc(border + "    " + HexStr(item) + ", ");
-    dumpfunc(border + "    }");
-    dumpfunc(border + "}");
-}
-
-void CMNVoteList::update (const CBlockIndex *pindex) {
-
-
-
-}
-
-void CMNVoteList::dump (const std::string& border, std::function<void(std::string)> dumpfunc) {
-    LOCK(cs);
     dumpfunc(border + "mapVotes {");
     for (auto& item : mapVotes)
         item.second.dump (border + "        ", dumpfunc);
@@ -4228,3 +4358,5 @@ void CMNVoteList::dump (const std::string& border, std::function<void(std::strin
         item.second.dump (border + "        ", dumpfunc);
     dumpfunc(border + "}");
 }
+
+CMNList mns;

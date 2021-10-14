@@ -116,7 +116,7 @@
          </attribute>
          <column>
           <property name="text">
-           <string>Service</string>
+           <string>Payout Address</string>
           </property>
          </column>
          <column>
@@ -132,11 +132,6 @@
          <column>
           <property name="text">
            <string>LastPaid</string>
-          </property>
-         </column>
-         <column>
-          <property name="text">
-           <string>Payout Address</string>
           </property>
          </column>
          <column>

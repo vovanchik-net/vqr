@@ -58,8 +58,8 @@ static UniValue validateaddress(const JSONRPCRequest& request)
             "  \"witness_program\" : \"hex\"     (string, optional) The hex value of the witness program\n"
             "}\n"
             "\nExamples:\n"
-            + HelpExampleCli("validateaddress", "\"TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi\"")
-            + HelpExampleRpc("validateaddress", "\"TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi\"")
+            + HelpExampleCli("validateaddress", "\"VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy\"")
+            + HelpExampleRpc("validateaddress", "\"VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy\"")
         );
 
     CTxDestination dest = DecodeDestination(request.params[0].get_str());
@@ -173,11 +173,11 @@ static UniValue verifymessage(const JSONRPCRequest& request)
             "\nUnlock the wallet for 30 seconds\n"
             + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the signature\n"
-            + HelpExampleCli("signmessage", "\"TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi\" \"my message\"") +
+            + HelpExampleCli("signmessage", "\"VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy\" \"my message\"") +
             "\nVerify the signature\n"
-            + HelpExampleCli("verifymessage", "\"TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi\" \"signature\" \"my message\"") +
+            + HelpExampleCli("verifymessage", "\"VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy\" \"signature\" \"my message\"") +
             "\nAs json rpc\n"
-            + HelpExampleRpc("verifymessage", "\"TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi\", \"signature\", \"my message\"")
+            + HelpExampleRpc("verifymessage", "\"VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy\", \"signature\", \"my message\"")
         );
 
     LOCK(cs_main);
@@ -228,7 +228,7 @@ static UniValue signmessagewithprivkey(const JSONRPCRequest& request)
             "\nCreate the signature\n"
             + HelpExampleCli("signmessagewithprivkey", "\"privkey\" \"my message\"") +
             "\nVerify the signature\n"
-            + HelpExampleCli("verifymessage", "\"TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi\" \"signature\" \"my message\"") +
+            + HelpExampleCli("verifymessage", "\"VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy\" \"signature\" \"my message\"") +
             "\nAs json rpc\n"
             + HelpExampleRpc("signmessagewithprivkey", "\"privkey\", \"my message\"")
         );
@@ -329,19 +329,13 @@ UniValue getaddressbalance(const JSONRPCRequest& request)
     }
     std::vector<std::pair<CAddressKey, CAddressValue>> info;
     for (auto it : addresses) {
-        if (!pblocktree->ReadAddress(it, info))
+        if (!pAddressIndex || !pAddressIndex->ReadAddress(it, info))
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
     }
-
     UniValue result(UniValue::VARR);
     for (auto it : info) {
         UniValue output(UniValue::VOBJ);
-        CTxDestination addr;
-        if (ExtractDestination(it.first.script, addr)) {
-            output.pushKV("address", EncodeDestination(addr));
-        } else {
-            output.pushKV("address", ScriptToAsmStr(it.first.script));
-        }
+        output.pushKV("address", it.first.GetAddr(true));
         output.pushKV("value", ValueFromAmount(it.second.value));
         output.pushKV("from", strprintf("[%d] %s:%d", it.second.height, it.first.out.hash.ToString(), it.first.out.n));
         if (it.second.spend_height == 0) {

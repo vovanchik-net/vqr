@@ -35,6 +35,7 @@
 
 class CBlockIndex;
 class CBlockTreeDB;
+class CAddressIndexDB;
 class CChainParams;
 class CCoinsViewDB;
 class CInv;
@@ -74,7 +75,7 @@ static const unsigned int DEFAULT_MEMPOOL_EXPIRY = 336;
 /** Maximum kilobytes for transactions to store for processing during reorg */
 static const unsigned int MAX_DISCONNECTED_TX_POOL_SIZE = 20000;
 /** The maximum size of a blk?????.dat file (since 0.8) */
-static const unsigned int MAX_BLOCKFILE_SIZE = 0x10000000; // 256 MiB
+static const unsigned int MAX_BLOCKFILE_SIZE = 0x8000000; // 128 MiB
 /** The pre-allocation chunk size for blk?????.dat files (since 0.8) */
 static const unsigned int BLOCKFILE_CHUNK_SIZE = 0x1000000; // 16 MiB
 /** The pre-allocation chunk size for rev?????.dat files (since 0.8) */
@@ -160,6 +161,7 @@ extern std::atomic_bool fImporting;
 extern std::atomic_bool fReindex;
 extern int nScriptCheckThreads;
 extern bool fTxIndex;
+extern bool fAddressIndex;
 extern bool fIsBareMultisigStd;
 extern bool fRequireStandard;
 extern bool fCheckBlockIndex;
@@ -459,6 +461,10 @@ extern std::unique_ptr<CCoinsViewCache> pcoinsTip;
 
 /** Global variable that points to the active block tree (protected by cs_main) */
 extern std::unique_ptr<CBlockTreeDB> pblocktree;
+
+extern std::unique_ptr<CAddressIndexDB> pAddressIndex;
+
+extern bool isStakeRepeatAddr;
 
 /**
  * Return the spend height, which is one more than the inputs.GetBestBlock().

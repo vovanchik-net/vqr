@@ -751,6 +751,9 @@ public:
     CAmount lastSentFeeFilter;
     int64_t nextSendTimeFeeFilter;
 
+    std::atomic<int64_t> nLastHeightRequests;
+    std::atomic<int64_t> nLastTimeRequests;
+
     CNode(NodeId id, ServiceFlags nLocalServicesIn, int nMyStartingHeightIn, SOCKET hSocketIn, const CAddress &addrIn, uint64_t nKeyedNetGroupIn, uint64_t nLocalHostNonceIn, const CAddress &addrBindIn, const std::string &addrNameIn = "", bool fInboundIn = false);
     ~CNode();
     CNode(const CNode&) = delete;

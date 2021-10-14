@@ -36,7 +36,7 @@ MasternodeList::MasternodeList (QWidget* parent) : QWidget(parent), ui(new Ui::M
     int columnPayeeWidth = 270;
     int columnOutpointWidth = 420;
 
-    ui->tableWidgetMasternodes->setColumnWidth(COLUMN_SERVICE, columnAddressWidth);
+//    ui->tableWidgetMasternodes->setColumnWidth(COLUMN_SERVICE, columnAddressWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_STATUS, columnStatusWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_LASTSEEN, columnLastSeenWidth);
     ui->tableWidgetMasternodes->setColumnWidth(COLUMN_LASTPAID, columnLastPaidWidth);
@@ -155,7 +155,7 @@ void MasternodeList::updateList () {
         }
 
         ui->tableWidgetMasternodes->insertRow(0);
-        ui->tableWidgetMasternodes->setItem(0, COLUMN_SERVICE, addressItem);
+//        ui->tableWidgetMasternodes->setItem(0, COLUMN_SERVICE, addressItem);
         ui->tableWidgetMasternodes->setItem(0, COLUMN_STATUS, statusItem);
         ui->tableWidgetMasternodes->setItem(0, COLUMN_LASTSEEN, lastSeenItem);
         ui->tableWidgetMasternodes->setItem(0, COLUMN_LASTPAID, lastPaidItem);

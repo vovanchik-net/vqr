@@ -939,7 +939,7 @@ bool api_address (HTTPRequest* req, const std::string& strURIPart) {
     if (!IsValidDestination(DecodeDestination(sss))) 
         return API_ERROR (req, "address " + strURIPart + " is invalid");
     std::vector<std::pair<CAddressKey, CAddressValue>> info;
-    if (!pblocktree->ReadAddress(GetScriptForDestination(DecodeDestination(sss)), info))
+    if (!pAddressIndex || !pAddressIndex->ReadAddress(GetScriptForDestination(DecodeDestination(sss)), info))
         return API_ERROR (req, "address " + strURIPart + " not found");
     UniValue coins(UniValue::VARR);
     CAmount value = 0, receive_amount = 0, send_amount = 0; 

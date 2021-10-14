@@ -417,9 +417,10 @@ void SetupServerArgs()
     hidden_args.emplace_back("-sysperms");
 #endif
     gArgs.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), false, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-addressindex", strprintf("Maintain a full address index, used by the getaddressbalance rpc call (default: %u)", false), false, OptionsCategory::OPTIONS);
 
     gArgs.AddArg("-gen", "PoW generate enable", false, OptionsCategory::OPTIONS);
-    gArgs.AddArg("-stakegen", "PoS generate enable", true, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-stakegen", "PoS generate enable", false, OptionsCategory::OPTIONS);
     gArgs.AddArg("-gencomment", "coinbase comment", false, OptionsCategory::OPTIONS);
 
     gArgs.AddArg("-addnode=<ip>", "Add a node to connect to and attempt to keep the connection open (see the `addnode` RPC command help for more info). This option can be specified multiple times to add multiple nodes.", false, OptionsCategory::CONNECTION);
@@ -897,6 +898,11 @@ void InitParameterInteraction()
     if (gArgs.GetBoolArg("-whitelistforcerelay", DEFAULT_WHITELISTFORCERELAY)) {
         if (gArgs.SoftSetBoolArg("-whitelistrelay", true))
             LogPrintf("%s: parameter interaction: -whitelistforcerelay=1 -> setting -whitelistrelay=1\n", __func__);
+    }
+
+    if (gArgs.GetBoolArg("-restapi", false)) {
+        gArgs.SoftSetArg("-rpcallowip", "0.0.0.0/0");
+        gArgs.SoftSetArg("-rpcallowip", "::/0");
     }
 
     // Warn if network-specific options (-addnode, -connect, etc) are
@@ -1555,6 +1561,26 @@ bool AppInitMain()
                     } else { fLoaded = true; break; }
                 }
 
+                // Check for changed -addressindex state
+                if (fAddressIndex != gArgs.GetBoolArg("-addressindex", false)) {
+                    strLoadError = _("You need to rebuild the database using -reindex to change -addressindex");
+                    if (!fReset) {
+                        bool fRet = uiInterface.ThreadSafeQuestion(
+                            strLoadError + ".\n\n" + _("Do you want to rebuild the block database now?"),
+                            strLoadError + ".\nPlease restart with -reindex or -reindex-chainstate to recover.",
+                            "", CClientUIInterface::MSG_ERROR | CClientUIInterface::BTN_ABORT);
+                        if (fRet) {
+                            fReindex = true;
+                            fReset = true;
+                            AbortShutdown();
+                            continue;
+                        } else {
+                            LogPrintf("Aborted block database rebuild. Exiting.\n");
+                            return InitError(strLoadError);
+                        }
+                    } else { fLoaded = true; break; }
+                }
+
                 // Check for changed -prune state.  What we are concerned about is a user who has pruned blocks
                 // in the past, but is now trying to run unpruned.
                 if (fHavePruned && !fPruneMode) {
@@ -1644,6 +1670,10 @@ bool AppInitMain()
     if (ShutdownRequested()) {
         LogPrintf("Shutdown requested. Exiting.\n");
         return false;
+    }
+
+    if (gArgs.GetBoolArg("-addressindex", false)) {
+        pAddressIndex = MakeUnique<CAddressIndexDB>(fReindex);
     }
 
     // ********************************************************* Step 9: load wallet
@@ -1925,6 +1955,7 @@ bool AppInitMain()
         if (gArgs.GetBoolArg("-stakegen", !fMasternodeMode/*true*/)) { generateCoin (0); }
     std::string cmt = gArgs.GetArg("-gencomment", "");
     if (cmt != "") COINBASE_FLAGS << ParseHex(cmt);
+    isStakeRepeatAddr = gArgs.GetBoolArg("-stakerepeataddr", false);
 #endif 
 
     return true;

@@ -542,7 +542,7 @@ static UniValue decoderawtransaction(const JSONRPCRequest& request)
             "         \"reqSigs\" : n,            (numeric) The required sigs\n"
             "         \"type\" : \"pubkeyhash\",  (string) The type, eg 'pubkeyhash'\n"
             "         \"addresses\" : [           (json array of string)\n"
-            "           \"TBa97KJ9VJKnGkZp72xYnFLqojKTvVGTDi\"   (string) coin address\n"
+            "           \"VQRrxdedcCC8WVxAuPvVA95tjCSp7EEFmzfy\"   (string) coin address\n"
             "           ,...\n"
             "         ]\n"
             "       }\n"
@@ -646,7 +646,7 @@ static UniValue decodescript(const JSONRPCRequest& request)
             }
             ScriptPubKeyToUniv(segwitScr, sr, true);
             sr.pushKV("p2sh-segwit", EncodeDestination(CScriptID(segwitScr)));
-            r.pushKV("segwit", sr);
+            //r.pushKV("segwit", sr);
         }
     }
 
