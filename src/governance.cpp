@@ -1415,7 +1415,7 @@ void CGovernanceManager::UpdateCachesAndClean() {
                  strHash, pObj->GetDeletionTime(), nTimeSinceDeletion, pObj->IsSetCachedDelete(), pObj->IsSetExpired());
 
         if ((pObj->IsSetCachedDelete() || pObj->IsSetExpired()) && (nTimeSinceDeletion >= GOVERNANCE_DELETION_DELAY)) {
-            LogPrintf("CGovernanceManager::UpdateCachesAndClean -- erase obj %s\n", (*it).first.ToString());
+            LogPrint(BCLog::MN, "CGovernanceManager::UpdateCachesAndClean -- erase obj %s\n", (*it).first.ToString());
             mnodeman.RemoveGovernanceObject(pObj->GetHash());
 
             // Remove vote references
@@ -1446,7 +1446,7 @@ void CGovernanceManager::UpdateCachesAndClean() {
             if (pObj->GetObjectType() == GOVERNANCE_OBJECT_PROPOSAL) {
                 CProposalValidator validator(pObj->GetDataAsHexString());
                 if (!validator.Validate()) {
-                    LogPrintf("CGovernanceManager::UpdateCachesAndClean -- set for deletion expired obj %s\n", (*it).first.ToString());
+                    LogPrint(BCLog::MN, "CGovernanceManager::UpdateCachesAndClean -- set for deletion expired obj %s\n", (*it).first.ToString());
                     pObj->fCachedDelete = true;
                     if (pObj->nDeletionTime == 0) {
                         pObj->nDeletionTime = nNow;
@@ -1466,7 +1466,7 @@ void CGovernanceManager::UpdateCachesAndClean() {
             ++s_it;
     }
 
-    LogPrintf("CGovernanceManager::UpdateCachesAndClean -- %s\n", ToString());
+    LogPrint(BCLog::MN, "CGovernanceManager::UpdateCachesAndClean -- %s\n", ToString());
 }
 
 CGovernanceObject* CGovernanceManager::FindGovernanceObject(const uint256& nHash) {

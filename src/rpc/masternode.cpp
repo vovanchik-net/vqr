@@ -311,6 +311,8 @@ UniValue masternode_winners (const JSONRPCRequest& request) {
     if (request.params.size() >= 1) {
         nLast = atoi(request.params[0].get_str());
     }
+    if (nLast < 10) nLast = 10;
+    if (nLast > 5000) nLast = 5000;
 
     UniValue obj(UniValue::VOBJ);
     for(int i = nHeight - nLast; i < nHeight + 20; i++) {
@@ -354,10 +356,6 @@ UniValue masternode_dump (const JSONRPCRequest& request) {
     debug_log ("");
     debug_log ("");
     mnpayments.Dump("", [](std::string ss) { debug_log (ss); });
-    debug_log ("");
-    debug_log ("");
-    debug_log ("");
-//    governance.Dump("", [](std::string ss) { debug_log (ss); });
     debug_log ("");
     debug_log ("");
     debug_log ("");

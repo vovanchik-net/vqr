@@ -441,6 +441,7 @@ public:
         mapValue.erase("spent");
         mapValue.erase("n");
         mapValue.erase("timesmart");
+        mapValue.erase("all_spent");
     }
 
     //! make sure balances are recalculated
@@ -668,79 +669,6 @@ struct CoinSelectionParams
     CoinSelectionParams() {}
 };
 
-struct CCoinData {
-private:
-    COutPoint out;
-    CScript script;
-    CAmount value;
-    uint32_t height;
-    uint256 spend_hash;
-    uint32_t spend_n;
-    uint32_t spend_height;
-    bool fReadOnly;             // only memory
-    bool fLock;                 // only memory
-public:
-    CCoinData() {
-        SetNull();
-    }
-
-    CCoinData(const COutPoint& pout, const CScript& pscript, CAmount pvalue, uint32_t pheight) {
-        SetNull();
-        out = pout;
-        script = pscript;        
-        value = pvalue;
-        height = pheight;
-    }
-
-    void SetNull() {
-        out.SetNull();
-        script.clear();
-        value = 0;
-        height = 0;
-        spend_height = 0;
-        spend_hash.SetNull();
-        spend_n = 0;
-        fReadOnly = fLock = false;
-    }
-
-    bool IsNull() const {
-        return out.IsNull();
-    }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(out);
-        READWRITE(script);
-        READWRITE(value);
-        READWRITE(height);
-        READWRITE(spend_height);
-        if (spend_height > 0) {
-            READWRITE(spend_hash);
-            READWRITE(spend_n);
-        }
-    }
-
-    COutPoint getOut() const { return out; }
-    CScript getScript() const { return script; }
-    CAmount getValue() const { return value; }
-    uint32_t getHeight() const { return height; }
-    bool IsLocked () const { return fLock; }
-    bool IsSpended () const { return spend_height == 0; }
-    bool IsCanSpend () const { return !IsSpended() && !fReadOnly; }
-    COutPoint getSpend() const { return COutPoint(spend_hash, spend_n); }
-    uint32_t getSpendHeight() const { return spend_height; }
-    
-    void SetLocked (bool plock) { fLock = plock; }
-    void SetReadOnly (bool pReadOnly) { fReadOnly = pReadOnly; }
-    void addSpend (const uint256& pspend_hash, uint32_t pspend_n, uint32_t pspend_height) {
-        spend_hash = pspend_hash;
-        spend_n = pspend_n;
-        spend_height = pspend_height;
-    }
-};
-
 class WalletRescanReserver; //forward declarations for ScanForWalletTransactions/RescanFromTime
 /**
  * A CWallet is an extension of a keystore, which also maintains a set of transactions and balances,
@@ -953,9 +881,6 @@ public:
     void UnlockCoin(const COutPoint& output) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void UnlockAllCoins() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void ListLockedCoins(std::vector<COutPoint>& vOutpts) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-
-    CCoinData findCoin (const COutPoint& out);
-    std::set<CCoinData> getCoins ();
 
     /*
      * Rescan abort properties

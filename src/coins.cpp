@@ -15,17 +15,23 @@
 CAddressKey::CAddressKey(const CScript& pscript, const COutPoint& pout) {
     script = pscript;
     out = pout;
-    if (script.size() > 30) {
+    stype = 0;
+    if (script.size() == 67 && script[0] == 65 && script.back() == OP_CHECKSIG) {
         CTxDestination ar;
         if (ExtractDestination(script, ar)) script = GetScriptForDestination(ar);
+        stype = 1;
+    }
+    if (script.size() == 35 && script[0] == 33 && script.back() == OP_CHECKSIG) {
+        CTxDestination ar;
+        if (ExtractDestination(script, ar)) script = GetScriptForDestination(ar);
+        stype = 2;
     }
 }
 
-std::string CAddressKey::GetAddr (bool notnull) {
+std::string CAddressKey::GetAddr () {
     CTxDestination ar;
     if (ExtractDestination (script, ar)) return EncodeDestination(ar);
-    if (notnull) return ScriptToAsmStr (script);
-    return "";
+    return ScriptToAsmStr (script);
 }
 
 bool CCoinsView::GetCoin(const COutPoint &outpoint, Coin &coin) const { return false; }

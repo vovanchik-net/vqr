@@ -1217,10 +1217,10 @@ std::string CopyrightHolders(const std::string& strPrefix)
         strCopyrightHolders.replace(strCopyrightHolders.find("2009"), sizeof("2009")-1, "2020"); 
         std::string strPrefix1 = strPrefix;
         strPrefix1.replace(strPrefix1.find("2009"), sizeof("2009")-1, "2014");
-        strPrefix1.replace(strPrefix1.find("2021"), sizeof("2021")-1, "2018");
+        strPrefix1.replace(strPrefix1.find("2022"), sizeof("2022")-1, "2018");
         strCopyrightHolders += "\n" + strPrefix1 + "The Dash Core developers";
         std::string strPrefix2 = strPrefix;
-        strPrefix2.replace(strPrefix2.find("2021"), sizeof("2021")-1, "2018");
+        strPrefix2.replace(strPrefix2.find("2022"), sizeof("2022")-1, "2018");
         strCopyrightHolders += "\n" + strPrefix2 + "The Bitcoin Core developers";
     }
     return strCopyrightHolders;

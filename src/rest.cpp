@@ -939,46 +939,51 @@ bool api_address (HTTPRequest* req, const std::string& strURIPart) {
     if (!IsValidDestination(DecodeDestination(sss))) 
         return API_ERROR (req, "address " + strURIPart + " is invalid");
     std::vector<std::pair<CAddressKey, CAddressValue>> info;
-    if (!pAddressIndex || !pAddressIndex->ReadAddress(GetScriptForDestination(DecodeDestination(sss)), info))
+    if (!pblocktree->ReadAddress(GetScriptForDestination(DecodeDestination(sss)), info))
         return API_ERROR (req, "address " + strURIPart + " not found");
     UniValue coins(UniValue::VARR);
-    CAmount value = 0, receive_amount = 0, send_amount = 0; 
+    CAmount receive_amount = 0, send_amount = 0;
     int total_in = 0, total_out = 0, total_pos = 0; index *= 200;
-    std::sort(info.begin(), info.end(), heightSort); 
+    std::sort(info.begin(), info.end(), heightSort);
+    bool only_unspent = req->GetURI().find("/api/unspent/") != std::string::npos;
     for (auto it : info) {
+        bool isspent = it.second.spend_height != 0;
+        if (only_unspent && isspent) continue;
+        if (only_unspent && it.second.iscoinbase && (chainActive.Height() - it.second.height < COINBASE_MATURITY)) continue;
         UniValue output(UniValue::VOBJ);
         total_in++;
         receive_amount += it.second.value;
         output.pushKV("value", ValueFromAmount(it.second.value));
         output.pushKV("tx_hash", it.first.out.hash.GetHex());
         output.pushKV("tx_out", (int64_t)it.first.out.n);
-        output.pushKV("tx_height", (int64_t)it.second.height);
+        output.pushKV("height", (int64_t)it.second.height);
         const CBlockIndex* pi = chainActive[it.second.height];
-        if (pi) output.pushKV("tx_time", pi->GetBlockTime());
-        if (it.second.spend_height == 0) {
-            output.pushKV("isspent", false);
-            value += it.second.value;
-        } else {
+        if (pi) output.pushKV("time", pi->GetBlockTime());
+        if (it.first.stype == 0) output.pushKV("script", HexStr(it.first.script.begin(), it.first.script.end()));
+        if (isspent) {
             total_out++;
             send_amount += it.second.value;
-            output.pushKV("isspent", true);
             output.pushKV("spent_tx_hash", it.second.spend_hash.GetHex());
             output.pushKV("spent_tx_out", (int64_t)it.second.spend_n);
-            output.pushKV("spent_tx_height", (int64_t)it.second.spend_height);
+            output.pushKV("spent_height", (int64_t)it.second.spend_height);
             const CBlockIndex* pi = chainActive[it.second.spend_height];
-            if (pi) output.pushKV("spent_tx_time", pi->GetBlockTime());
+            if (pi) output.pushKV("spent_time", pi->GetBlockTime());
         }
         total_pos++;
         if ((index <= total_pos) && (total_pos < index + 200)) coins.push_back(output);
     }
     UniValue objTx(UniValue::VOBJ);
     objTx.pushKV("address", sss);
-    objTx.pushKV("value", ValueFromAmount(value));
-    objTx.pushKV("receive_count", total_in);
-    objTx.pushKV("send_count", total_out);
-    objTx.pushKV("receive_amount", ValueFromAmount(receive_amount));
-    objTx.pushKV("send_amount", ValueFromAmount(send_amount));
-    objTx.pushKV("start_offset", index);
+    objTx.pushKV("value", ValueFromAmount(receive_amount - send_amount));
+    if (!only_unspent) {
+        objTx.pushKV("receive_count", total_in);
+        objTx.pushKV("send_count", total_out);
+        objTx.pushKV("receive_amount", ValueFromAmount(receive_amount));
+        objTx.pushKV("send_amount", ValueFromAmount(send_amount));
+    }
+    objTx.pushKV("offset", index);
+    objTx.pushKV("count", total_pos);
+    objTx.pushKV("height", (int64_t)chainActive.Height());
     objTx.pushKV("coins", coins);
     return API_OK (req, objTx);
 }
@@ -1049,6 +1054,7 @@ static const struct {
       {"/api/block/", api_block},       // hash, index
       {"/api/tx/", api_tx},             // hash
       {"/api/address/", api_address},   // address
+      {"/api/unspent/", api_address},   // unspent
       {"/api/send/", api_send},         // TX HEX
 };
 

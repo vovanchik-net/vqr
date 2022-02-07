@@ -14,7 +14,7 @@ class CMasternode;
 class CMasternodeBroadcast;
 class CConnman;
 
-static const int MASTERNODE_CHECK_SECONDS               =       10;
+static const int MASTERNODE_CHECK_SECONDS               =       30;
 static const int MASTERNODE_MIN_MNB_SECONDS             =   5 * 60;
 static const int MASTERNODE_MIN_MNP_SECONDS             =  10 * 60;
 static const int MASTERNODE_SENTINEL_PING_MAX_SECONDS   =  60 * 60;
@@ -265,7 +265,6 @@ public:
     int GetLastPaidTime() const { return nTimeLastPaid; }
     int GetLastPaidBlock() const { return nBlockLastPaid; }
     CScript GetPayScript () const { return GetScriptForDestination(pubKeyCollateralAddress.GetID()); }
-    void UpdateLastPaid(const CBlockIndex *pindex, int nMaxBlocksToScanBack);
 
     // KEEP TRACK OF EACH GOVERNANCE ITEM INCASE THIS NODE GOES OFFLINE, SO WE CAN RECALC THEIR STATUS
     void AddGovernanceVote(uint256 nGovernanceObjectHash);
@@ -868,8 +867,6 @@ public:
     bool CheckMnbAndUpdateMasternodeList(CNode* pfrom, CMasternodeBroadcast mnb, int& nDos, CConnman& connman);
     bool IsMnbRecoveryRequested(const uint256& hash) { return mMnbRecoveryRequests.count(hash); }
 
-    void UpdateLastPaid(const CBlockIndex* pindex);
-
     void AddDirtyGovernanceObjectHash(const uint256& nHash) {
         LOCK(cs);
         vecDirtyGovernanceObjectHashes.push_back(nHash);
@@ -989,34 +986,33 @@ private:
     std::vector<CMasternodeEntry> entries;
 }; 
 
+void load_mn_dat ();
+void save_mn_dat ();
+
 extern CMasternodeConfig masternodeConfig;
 
 // new masternodes
 
-extern uint256 activemn;
-
 enum CMNState {MN_PRE_ENABLED, MN_ENABLED, MN_EXPIRED, MN_DISABLED, MN_BAN};
 
-struct CMN {
+class CMN {
 public:
-    COutPoint outpoint;         // uni
-    CService addr;              // check every 12 tick from sigTime
+    COutPoint outpoint;                     // uni
+    CService addr;                          // check TODO
     CPubKey pkMasternode;
     uint256 block_id;
     std::vector<unsigned char> sig;
 
-    int nRegisteredHeight;      // memonly
-    int nLastPaidHeight;        // memonly
-    CMNState nState;            // memonly
-                                // отсутствие ноды +1 очко бана (первые 12 тиков не считается)
-                                // лишняя нода     +3 очка бана 
-                                // пропуск пинга > 12 блоков   + 1 очко бана
-    int nBanScore;              // memonly
-    CScript scriptPayout;       // memonly
+    int nRegisteredHeight;                  // memonly
+    int nLastPaidHeight;                    // memonly
+    CMNState nState;                        // memonly
+    std::map<uint256, uint256> mapVotes;    // memonly  block_id = vote_id (576 max)
+    int nBanScore;                          // memonly  no vote(+1 from 4), wrong vote(+1), ok vote (-1 from 4) 
+    CScript scriptPayout;                   // memonly
+    int nLastModifyHeight;                  // memonly
 
-    CMN () : outpoint(), addr(), scriptPayout(), pkMasternode(), sig(), nState(MN_DISABLED) { };
-    CMN (COutPoint outpointNew, CService addrNew, CPubKey pkMasternodeNew) :
-        outpoint(outpointNew), addr(addrNew), pkMasternode(pkMasternodeNew), sig(), nState(MN_DISABLED) { };
+    CMN () : outpoint(), addr(), pkMasternode(), block_id(), sig(), nRegisteredHeight(0), nLastPaidHeight(0),
+                nState(MN_DISABLED), nBanScore(0), scriptPayout(), nLastModifyHeight(0) { };
 
     ADD_SERIALIZE_METHODS;
 
@@ -1029,7 +1025,7 @@ public:
         READWRITE(sig);
     }
 
-    uint256 hash () const;
+    uint256 hash (bool forsign = false) const;
 
     bool check ();
 
@@ -1046,9 +1042,10 @@ public:
     int type;
     std::vector<uint256> data;
 
-    int nHeight;                // memonly
+    int nHeight;                            // memonly
+    int64_t time;                           // memonly
 
-    CMNVote() : mn_id(), block_id(), sig(), type(0), data() { }
+    CMNVote() : mn_id(), block_id(), sig(), type(0), data(), nHeight(0), time(0) { }
 
     ADD_SERIALIZE_METHODS;
 
@@ -1061,7 +1058,7 @@ public:
         READWRITE(data);
     }
 
-    uint256 hash () const;
+    uint256 hash (bool forsign = false) const;
 
     bool check ();
 
@@ -1072,22 +1069,20 @@ public:
 
 class CMNList {
 public:
-    const int MN_start = 200;
     CCriticalSection cs;
     CCriticalSection cs_pay;
     std::map<uint256, CMN> mapMasternodes;
-    std::map<uint256, CMN> mapOldMasternodes;
     std::map<uint256, CMNVote> mapVotes;
-    std::map<uint256, CMNVote> mapOldVotes;
-    std::map<uint256, std::pair<CScript, int>> mapPayouts;
+    std::map<std::pair<uint256, CScript>, int> mapPayouts;
 
     bool exist (const uint256& hash);
     bool vote_exist (const uint256& hash);
-    void add (const uint256& id, CMN& mn, bool valid);
-    void vote_add (const uint256& id, CMNVote& vote, bool valid);
+    void add (const uint256& id, CMN& mn);
+    void vote_add (const uint256& id, CMNVote& vote);
     void tick (const CBlockIndex *pindex);
     void update_pay (const uint256 &block_hash, int height, const CTransaction &tx);
-    void update_lastpay (const CScript &addr, int &height);
+    void get_pay (const CScript &addr, int& from_height);
+    std::vector<uint256> get_pay_queue ();
     void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
 };
 

@@ -220,29 +220,7 @@ void Shutdown()
 
     StopTorControl();
 
-    int64_t nStart = GetTimeMillis(); 
-    CDataStream ssObj(SER_DISK, CLIENT_VERSION);
-    ssObj << Params().MessageStart() << mnodeman << mnpayments << governance;
-    uint256 hash = Hash(ssObj.begin(), ssObj.end());
-    ssObj << hash;
-    fs::path pathDB = GetDataDir() / "masternode.dat"; 
-    FILE *file = fopen(pathDB.string().c_str(), "wb");
-    CAutoFile fileout(file, SER_DISK, CLIENT_VERSION);
-    if (fileout.IsNull()) {
-        LogPrintf("masternode.dat: Failed to open file\n");
-    } else {
-        try {
-            fileout << ssObj;
-        }
-        catch (std::exception &e) {
-            LogPrintf("masternode.dat: Serialize or I/O error - %s\n", e.what());
-        }
-        catch (...) {
-            LogPrintf("masternode.dat: Serialize or I/O error\n");
-        }
-        fileout.fclose();
-    }
-    LogPrintf("masternode.dat: dump finished  %dms\n", GetTimeMillis() - nStart); 
+    save_mn_dat ();
 
     // After everything has been shut down, but before things get flushed, stop the
     // CScheduler/checkqueue threadGroup
@@ -756,13 +734,15 @@ static void ThreadCheckMN (CConnman& connman) {
             if (masternodeSync.IsBlockchainSynced() && !ShutdownRequested()) {
                 nTick++;
                 // make sure to check all masternodes first
-                mnodeman.Check();
+                if (nTick % 5 == 0) mnodeman.Check();
                 mnodeman.ProcessPendingMnbRequests(connman);
                 mnodeman.ProcessPendingMnvRequests(connman);
                 // check if we should activate or ping every few minutes,
                 // slightly postpone first run to give net thread a chance to connect to some peers
-                if(nTick % MASTERNODE_MIN_MNP_SECONDS == 15)        // 10 минут
+                if(nTick % MASTERNODE_MIN_MNP_SECONDS == 15) {        // 10 минут
                     activeMasternode.ManageState(connman);
+                    save_mn_dat ();
+                }
                 if(nTick % 60 == 0) {                               // 1 минута
                     netfulfilledman.CheckAndRemove();
                     mnodeman.ProcessMasternodeConnections(connman);
@@ -1672,10 +1652,6 @@ bool AppInitMain()
         return false;
     }
 
-    if (gArgs.GetBoolArg("-addressindex", false)) {
-        pAddressIndex = MakeUnique<CAddressIndexDB>(fReindex);
-    }
-
     // ********************************************************* Step 9: load wallet
     if (!g_wallet_init_interface.Open()) return false;
 
@@ -1780,7 +1756,7 @@ bool AppInitMain()
     }
 #endif // ENABLE_WALLET
 
-
+    if (masternodeConfig.getCount() == 0) fMasternodeMode = false;
     if (fMasternodeMode) {
         LogPrintf("MASTERNODE:\n");
 
@@ -1804,62 +1780,10 @@ bool AppInitMain()
         }
     }
 
-    fEnableInstantSend = gArgs.GetBoolArg("-enableinstantsend", 1);
+    fEnableInstantSend = gArgs.GetBoolArg("-enableinstantsend", 0);
     nInstantSendDepth = DEFAULT_INSTANTSEND_DEPTH;
 
-    int64_t nStart = GetTimeMillis(); 
-    fs::path pathDB = GetDataDir() / "masternode.dat"; 
-    FILE *file = fopen(pathDB.string().c_str(), "rb");
-    CAutoFile filein(file, SER_DISK, CLIENT_VERSION);
-    if (filein.IsNull()) {
-        LogPrintf("masternode.dat: Failed to open file\n");
-    } else {
-        int dataSize = fs::file_size(pathDB) - sizeof(uint256);
-        if (dataSize < 0) dataSize = 0;
-        std::vector<unsigned char> vchData;
-        vchData.resize(dataSize);
-        uint256 hashIn;
-        try {
-            filein.read((char *)vchData.data(), dataSize);
-            filein >> hashIn;
-        }
-        catch (std::exception &e) {
-            LogPrintf("masternode.dat: Serialize or I/O error - %s\n", e.what());
-        }
-        filein.fclose();         
-        
-        CDataStream ssObj(vchData, SER_DISK, CLIENT_VERSION);
-        uint256 hashTmp = Hash(ssObj.begin(), ssObj.end());
-        if (hashIn != hashTmp) {
-            LogPrintf("masternode.dat: Checksum mismatch, data corrupted\n");
-        } else {
-            unsigned char pchMsgTmp[4];
-            try {
-                ssObj >> pchMsgTmp;
-                if (memcmp(pchMsgTmp, Params().MessageStart(), sizeof(pchMsgTmp))) {
-                    LogPrintf("masternode.dat: Invalid network magic number\n");
-                } else {
-                    ssObj >> mnodeman;
-                    ssObj >> mnpayments;
-                    ssObj >> governance;
-                    governance.InitOnLoad();
-                }
-            }
-            catch (std::exception &e) {
-                mnodeman.Clear();
-                mnpayments.Clear();
-                governance.Clear();
-                LogPrintf("mn.dat: Serialize or I/O error - %s\n", e.what());
-            }
-            catch (...) {
-                mnodeman.Clear();
-                mnpayments.Clear();
-                governance.Clear();
-                LogPrintf("mn.dat: Serialize or I/O error\n");
-            }
-        }
-        LogPrintf("mn.dat: dump finished  %dms\n", GetTimeMillis() - nStart);
-    }
+    load_mn_dat ();
 
     pdsNotificationInterface->InitializeCurrentBlockTip();
     

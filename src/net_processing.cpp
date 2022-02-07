@@ -972,6 +972,12 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 
     case MSG_MASTERNODE_VERIFY:
         return mnodeman.mapSeenMasternodeVerification.count(inv.hash);
+
+    case MSG_MN:
+        return mns.exist(inv.hash);
+
+    case MSG_VOTE:
+        return mns.vote_exist(inv.hash);
     }
     // Don't know what it is, just say we already got one
     return true;
@@ -1276,6 +1282,22 @@ void static ProcessGetData(CNode* pfrom, const CChainParams& chainparams, CConnm
             if (!push && inv.type == MSG_MASTERNODE_VERIFY) {
                 if (mnodeman.mapSeenMasternodeVerification.count(inv.hash)) {
                     connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::MNVERIFY, mnodeman.mapSeenMasternodeVerification[inv.hash]));
+                    push = true;
+                }
+            }
+
+            if (!push && inv.type == MSG_MN) {
+                if (mns.exist(inv.hash)) {
+                    LOCK (mns.cs);
+                    connman->PushMessage(pfrom, msgMaker.Make("cmn", mns.mapMasternodes[inv.hash]));
+                    push = true;
+                }
+            }
+
+            if (!push && inv.type == MSG_VOTE) {
+                if (mns.vote_exist(inv.hash)) {
+                    LOCK (mns.cs);
+                    connman->PushMessage(pfrom, msgMaker.Make("cvote", mns.mapVotes[inv.hash]));
                     push = true;
                 }
             }
@@ -2581,66 +2603,43 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         // message would be undesirable as we transmit it ourselves.
     }
 
-    else if (strCommand == "MN_DECL") {
-        uint256 hash;
-        vRecv >> hash;
-        if (!mns.exist(hash)) 
-            connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make("MN_GET", hash));
-    }
-
-    else if (strCommand == "MN_GET") {
-        uint256 hash;
-        vRecv >> hash;
-        LOCK (mns.cs);
-        CNetMsgMaker msgMaker(pfrom->GetSendVersion());
-        for (const auto& mn : mns.mapMasternodes) {
-            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("MN_DECL", mn.first));
-            if (hash == mn.first)  connman->PushMessage(pfrom, msgMaker.Make("MN_PUT", mn.second));
-        }
-    }
-
-    else if (strCommand == "MN_PUT") {
+    else if (strCommand == "cmn") {
         CMN mn;
         vRecv >> mn;
         uint256 id = mn.hash();
         if (mns.exist(id)) return true;
         bool valid = mn.check();
-        mns.add (id, mn, valid);
-        if (!valid) return true;
-        connman->ForEachNode([&connman, &id](CNode* pnode) {
-            connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("MN_DECL", id));
-        });
-    }
-
-    else if (strCommand == "VOTE_DECL") {
-        uint256 hash;
-        vRecv >> hash;
-        if (!mns.vote_exist(hash))
-            connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make("VOTE_GET", hash));
-    }
-
-    else if (strCommand == "VOTE_GET") {
-        uint256 hash;
-        vRecv >> hash;
-        LOCK (mns.cs);
-        CNetMsgMaker msgMaker(pfrom->GetSendVersion());
-        for (const auto& mn : mns.mapVotes) {
-            if (hash == uint256()) connman->PushMessage(pfrom, msgMaker.Make("VOTE_DECL", mn.first));
-            if (hash == mn.first)  connman->PushMessage(pfrom, msgMaker.Make("VOTE_PUT", mn.second));
+        mns.add (id, mn);
+        if (valid) {
+            CInv inv(MSG_MN, id);
+            connman->ForEachNode([&inv](CNode* pnode) { pnode->PushInventory(inv); });
         }
     }
 
-    else if (strCommand == "VOTE_PUT") {
+    else if (strCommand == "cvote") {
         CMNVote vote;
         vRecv >> vote;
         uint256 id = vote.hash();
         if (mns.vote_exist(id)) return true;
+        if (!mns.exist(vote.mn_id)) {
+            pfrom->AskFor(CInv(MSG_MN, vote.mn_id));
+            mns.vote_add (id, vote);
+            return true;
+        }
         bool valid = vote.check();
-        mns.vote_add (id, vote, valid);
-        if (!valid) return true;
-        connman->ForEachNode([&connman, &id](CNode* pnode) {
-            connman->PushMessage(pnode, CNetMsgMaker(pnode->GetSendVersion()).Make("VOTE_DECL", id));
-        });
+        mns.vote_add (id, vote);
+        if (valid) {
+            CInv inv(MSG_VOTE, id);
+            connman->ForEachNode([&inv](CNode* pnode) { pnode->PushInventory(inv); });
+        }
+    }
+
+    else if (strCommand == "cinit") {
+        LOCK (mns.cs);
+        for (auto& it : mns.mapVotes) {
+            CInv inv(MSG_VOTE, it.first);
+            pfrom->PushInventory(inv);
+        }
     }
 
     else {

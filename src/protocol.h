@@ -406,6 +406,8 @@ enum GetDataMsg
     MSG_GOVERNANCE_OBJECT = 17,
     MSG_GOVERNANCE_OBJECT_VOTE = 18,
     MSG_MASTERNODE_VERIFY = 19,
+    MSG_MN = 31,
+    MSG_VOTE = 32,
 };
 
 /** inv message data */

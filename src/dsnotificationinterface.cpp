@@ -43,5 +43,5 @@ void CDSNotificationInterface::UpdatedBlockTip(const CBlockIndex *pindexNew, con
 void CDSNotificationInterface::BlockConnected (const std::shared_ptr<const CBlock> &pblock, const CBlockIndex *pindex, 
     const std::shared_ptr<const std::vector<CTransactionRef>> &vtxConflicted)
 {
-    instantsend.BlockConnected(pblock, pindex, vtxConflicted);
+    if (fEnableInstantSend) instantsend.BlockConnected(pblock, pindex, vtxConflicted);
 }

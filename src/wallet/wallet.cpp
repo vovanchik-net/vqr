@@ -470,7 +470,7 @@ bool CWallet::Unlock(const SecureString& strWalletPassphrase, bool fForPosOnly)
 
 bool CWallet::ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase, const SecureString& strNewWalletPassphrase)
 {
-    bool fWasLocked = IsLocked(true);
+    bool fWasLocked = IsLocked(fUsedPoS);
 
     {
         LOCK(cs_wallet);
@@ -505,7 +505,7 @@ bool CWallet::ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase,
                     return false;
                 WalletBatch(*database).WriteMasterKey(pMasterKey.first, pMasterKey.second);
                 if (fWasLocked)
-                    Lock(true);
+                    Lock(fUsedPoS);
                 return true;
             }
         }
@@ -1327,6 +1327,7 @@ void CWallet::BlockConnected(const std::shared_ptr<const CBlock>& pblock, const 
         for (std::map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const uint256& hash = (*it).first;
             CWalletTx& wtx = (*it).second;
+            if (wtx.mapValue.count("all_spent") > 0) continue;
             if ((wtx.GetDepthInMainChain() <= 0) && (!wtx.isAbandoned()) &&
                     (!wtx.fInMempool) && (GetAdjustedTime() - wtx.nTimeReceived > 15*60)) {
                 wtx.setAbandoned();
@@ -2186,6 +2187,7 @@ CAmount CWallet::GetBalance(const isminefilter& filter, const int min_depth) con
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
+            if (pcoin->mapValue.count("all_spent") > 0) continue;
             if (pcoin->IsTrusted() && pcoin->GetDepthInMainChain() >= min_depth) {
                 nTotal += pcoin->GetAvailableCredit(true, filter);
             }
@@ -2203,6 +2205,7 @@ CAmount CWallet::GetUnconfirmedBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
+            if (pcoin->mapValue.count("all_spent") > 0) continue;
             if (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0 && pcoin->InMempool())
                 nTotal += pcoin->GetAvailableCredit();
         }
@@ -2218,6 +2221,7 @@ CAmount CWallet::GetImmatureBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
+            if (pcoin->mapValue.count("all_spent") > 0) continue;
             nTotal += pcoin->GetImmatureCredit();
         }
     }
@@ -2232,6 +2236,7 @@ CAmount CWallet::GetUnconfirmedWatchOnlyBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
+            if (pcoin->mapValue.count("all_spent") > 0) continue;
             if (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0 && pcoin->InMempool())
                 nTotal += pcoin->GetAvailableCredit(true, ISMINE_WATCH_ONLY);
         }
@@ -2247,6 +2252,7 @@ CAmount CWallet::GetImmatureWatchOnlyBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
+            if (pcoin->mapValue.count("all_spent") > 0) continue;
             nTotal += pcoin->GetImmatureWatchOnlyCredit();
         }
     }
@@ -2266,6 +2272,7 @@ CAmount CWallet::GetLegacyBalance(const isminefilter& filter, int minDepth, cons
     CAmount balance = 0;
     for (const auto& entry : mapWallet) {
         const CWalletTx& wtx = entry.second;
+        if (wtx.mapValue.count("all_spent") > 0) continue;
         const int depth = wtx.GetDepthInMainChain();
         if (depth < 0 || !CheckFinalTx(*wtx.tx) || wtx.GetBlocksToMaturity() > 0) {
             continue;
@@ -2323,6 +2330,7 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
     {
         const uint256& wtxid = entry.first;
         const CWalletTx* pcoin = &entry.second;
+        if (pcoin->mapValue.count("all_spent") > 0) continue;
 
         if (!CheckFinalTx(*pcoin->tx))
             continue;
@@ -2379,6 +2387,8 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
         if (nDepth < nMinDepth || nDepth > nMaxDepth)
             continue;
 
+        int cnt = 0;
+
         for (unsigned int i = 0; i < pcoin->tx->vout.size(); i++) {
             if (pcoin->tx->vout[i].nValue < nMinimumAmount || pcoin->tx->vout[i].nValue > nMaximumAmount)
                 continue;
@@ -2403,6 +2413,8 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
 
             vCoins.push_back(COutput(pcoin, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
 
+            cnt++;
+
             // Checks the sum amount of all UTXO's.
             if (nMinimumSumAmount != MAX_MONEY) {
                 nTotal += pcoin->tx->vout[i].nValue;
@@ -2417,6 +2429,8 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
                 return;
             }
         }
+
+        if (cnt == 0) const_cast<CWalletTx*>(pcoin)->mapValue["all_spent"] = "1";
     }
 }
 
@@ -3151,33 +3165,7 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
     int32_t nCoinStakeTime = header.nTime;
     // Choose coins to use
     std::vector<COutput> vCoins;
-    for (const auto& entry : mapWallet) {
-        const uint256& wtxid = entry.first;
-        static std::set<uint256> emptytx;
-        if (emptytx.count(wtxid) > 0) continue;
-        const CWalletTx* pcoin = &entry.second;
-        if (!CheckFinalTx(*pcoin->tx)) continue;
-        if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0) continue;
-        int nDepth = pcoin->GetDepthInMainChain();
-        if (nDepth < 0) continue;
-        if (nDepth == 0 && !pcoin->InMempool()) continue;
-        bool safeTx = pcoin->IsTrusted();
-        if (nDepth == 0 && pcoin->mapValue.count("replaces_txid")) { safeTx = false; }
-        if (nDepth == 0 && pcoin->mapValue.count("replaced_by_txid")) { safeTx = false; }
-        if (!safeTx) continue;
-        int cnt = 0;
-        for (unsigned int i = 0; i < pcoin->tx->vout.size(); i++) {
-            if (IsLockedCoin(entry.first, i)) continue;
-            if (IsSpent(wtxid, i)) continue;
-            isminetype mine = IsMine(pcoin->tx->vout[i]);
-            if (mine == ISMINE_NO) continue;
-            bool solvable = IsSolvable(*this, pcoin->tx->vout[i].scriptPubKey);
-            bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO);
-            vCoins.push_back(COutput(pcoin, i, nDepth, spendable, solvable, safeTx));
-            cnt++;
-        }
-        if (cnt == 0) emptytx.insert(wtxid);
-    }
+    AvailableCoins(vCoins, true, nullptr, 0);
     LogPrint(BCLog::SELECTCOINS, "        Total select coin = %d\n", vCoins.size());
     CAmount nCredit = 0;
     static std::map<uint256, uint64_t> cachedCoins; 
@@ -4004,44 +3992,6 @@ void CWallet::ListLockedCoins(std::vector<COutPoint>& vOutpts) const
         vOutpts.push_back(outpt);
     }
 }
-
-CCoinData CWallet::findCoin (const COutPoint& out) {
-    LOCK2(cs_main, cs_wallet);
-    const CWalletTx* fcoin = nullptr;
-    for (const auto& entry : mapWallet) {
-        if (entry.first != out.hash) continue;
-        fcoin = &entry.second;
-        break;
-    }
-    if (fcoin == nullptr) return CCoinData();
-    CBlockIndex* pindex = LookupBlockIndex(fcoin->hashBlock);
-    if (pindex == nullptr) return CCoinData();
-    const CTxOut& tout = fcoin->tx->vout[out.n];
-    CCoinData ret (out, tout.scriptPubKey, tout.nValue, pindex->nHeight);
-    if (IsLockedCoin(out.hash, out.n)) ret.SetLocked (true);
-    isminetype mine = IsMine(tout);
-    if (mine == ISMINE_NO) return CCoinData();
-    if (mine == ISMINE_WATCH_ONLY) ret.SetReadOnly (true);
-    auto range = mapTxSpends.equal_range(out);
-    for (TxSpends::const_iterator _it = range.first; _it != range.second; ++_it) {
-        const uint256& wtxid = _it->second; 
-        CBlockIndex* spendindex = LookupBlockIndex(wtxid);
-        auto mit = mapWallet.find(wtxid);
-        if ((mit != mapWallet.end()) && (mit->second.GetDepthInMainChain() > 0) && (spendindex != nullptr)) {
-            int nn = -1, x = 0;
-            for(auto vin : mit->second.tx->vin) {
-                if (vin.prevout == out) { nn = x; break; }
-                x++;                
-            }
-            if (nn != -1) ret.addSpend (wtxid, nn, spendindex->nHeight);
-        }
-    }
-    return ret;
-}
-
-std::set<CCoinData> CWallet::getCoins () {
-    return {};
-};
 
 /** @} */ // end of Actions
 

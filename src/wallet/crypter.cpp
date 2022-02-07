@@ -230,7 +230,7 @@ bool CCryptoKeyStore::AddKeyPubKey(const CKey& key, const CPubKey &pubkey)
         return CBasicKeyStore::AddKeyPubKey(key, pubkey);
     }
 
-    if (IsLocked()) {
+    if (IsLocked(fUsedPoS)) {
         return false;
     }
 

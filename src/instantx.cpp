@@ -623,7 +623,7 @@ void CInstantSend::CheckAndRemove()
         CTxLockCandidate &txLockCandidate = itLockCandidate->second;
         uint256 txHash = txLockCandidate.GetHash();
         if(txLockCandidate.IsExpired(nCachedBlockHeight)) {
-            LogPrintf("CInstantSend::CheckAndRemove -- Removing expired Transaction Lock Candidate: txid=%s\n", txHash.ToString());
+            LogPrint(BCLog::IS, "CInstantSend::CheckAndRemove -- Removing expired Transaction Lock Candidate: txid=%s\n", txHash.ToString());
             std::map<COutPoint, COutPointLock>::iterator itOutpointLock = txLockCandidate.mapOutPointLocks.begin();
             while(itOutpointLock != txLockCandidate.mapOutPointLocks.end()) {
                 mapLockedOutpoints.erase(itOutpointLock->first);
@@ -686,7 +686,7 @@ void CInstantSend::CheckAndRemove()
             ++itMasternodeOrphan;
         }
     }
-    LogPrintf("CInstantSend::CheckAndRemove -- %s\n", ToString());
+    LogPrint(BCLog::IS, "CInstantSend::CheckAndRemove -- %s\n", ToString());
 }
 
 bool CInstantSend::AlreadyHave(const uint256& hash)

@@ -329,13 +329,17 @@ UniValue getaddressbalance(const JSONRPCRequest& request)
     }
     std::vector<std::pair<CAddressKey, CAddressValue>> info;
     for (auto it : addresses) {
-        if (!pAddressIndex || !pAddressIndex->ReadAddress(it, info))
+        if (!pblocktree->ReadAddress(it, info))
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
     }
+
     UniValue result(UniValue::VARR);
     for (auto it : info) {
         UniValue output(UniValue::VOBJ);
-        output.pushKV("address", it.first.GetAddr(true));
+        output.pushKV("address", it.first.GetAddr());
+        output.pushKV("script", HexStr(it.first.script.begin(), it.first.script.end()));
+        if (it.second.iscoinbase) output.pushKV("coinbase", "true");
+        if (it.first.stype > 0) output.pushKV("script_pubkey", "true");
         output.pushKV("value", ValueFromAmount(it.second.value));
         output.pushKV("from", strprintf("[%d] %s:%d", it.second.height, it.first.out.hash.ToString(), it.first.out.n));
         if (it.second.spend_height == 0) {
