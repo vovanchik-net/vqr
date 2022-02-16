@@ -441,7 +441,6 @@ public:
         mapValue.erase("spent");
         mapValue.erase("n");
         mapValue.erase("timesmart");
-        mapValue.erase("all_spent");
     }
 
     //! make sure balances are recalculated

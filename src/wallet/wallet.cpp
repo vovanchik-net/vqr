@@ -1322,12 +1322,11 @@ void CWallet::BlockConnected(const std::shared_ptr<const CBlock>& pblock, const 
 
     if (IsInitialBlockDownload()) return;
     static int64_t last = GetAdjustedTime();
-    if (GetAdjustedTime() - last > 60) {
+    if (GetAdjustedTime() - last > 5*60) {
         last = GetAdjustedTime();
         for (std::map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const uint256& hash = (*it).first;
             CWalletTx& wtx = (*it).second;
-            if (wtx.mapValue.count("all_spent") > 0) continue;
             if ((wtx.GetDepthInMainChain() <= 0) && (!wtx.isAbandoned()) &&
                     (!wtx.fInMempool) && (GetAdjustedTime() - wtx.nTimeReceived > 15*60)) {
                 wtx.setAbandoned();
@@ -2187,7 +2186,6 @@ CAmount CWallet::GetBalance(const isminefilter& filter, const int min_depth) con
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
-            if (pcoin->mapValue.count("all_spent") > 0) continue;
             if (pcoin->IsTrusted() && pcoin->GetDepthInMainChain() >= min_depth) {
                 nTotal += pcoin->GetAvailableCredit(true, filter);
             }
@@ -2205,7 +2203,6 @@ CAmount CWallet::GetUnconfirmedBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
-            if (pcoin->mapValue.count("all_spent") > 0) continue;
             if (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0 && pcoin->InMempool())
                 nTotal += pcoin->GetAvailableCredit();
         }
@@ -2221,7 +2218,6 @@ CAmount CWallet::GetImmatureBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
-            if (pcoin->mapValue.count("all_spent") > 0) continue;
             nTotal += pcoin->GetImmatureCredit();
         }
     }
@@ -2236,7 +2232,6 @@ CAmount CWallet::GetUnconfirmedWatchOnlyBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
-            if (pcoin->mapValue.count("all_spent") > 0) continue;
             if (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0 && pcoin->InMempool())
                 nTotal += pcoin->GetAvailableCredit(true, ISMINE_WATCH_ONLY);
         }
@@ -2252,7 +2247,6 @@ CAmount CWallet::GetImmatureWatchOnlyBalance() const
         for (const auto& entry : mapWallet)
         {
             const CWalletTx* pcoin = &entry.second;
-            if (pcoin->mapValue.count("all_spent") > 0) continue;
             nTotal += pcoin->GetImmatureWatchOnlyCredit();
         }
     }
@@ -2272,7 +2266,6 @@ CAmount CWallet::GetLegacyBalance(const isminefilter& filter, int minDepth, cons
     CAmount balance = 0;
     for (const auto& entry : mapWallet) {
         const CWalletTx& wtx = entry.second;
-        if (wtx.mapValue.count("all_spent") > 0) continue;
         const int depth = wtx.GetDepthInMainChain();
         if (depth < 0 || !CheckFinalTx(*wtx.tx) || wtx.GetBlocksToMaturity() > 0) {
             continue;
@@ -2330,7 +2323,6 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
     {
         const uint256& wtxid = entry.first;
         const CWalletTx* pcoin = &entry.second;
-        if (pcoin->mapValue.count("all_spent") > 0) continue;
 
         if (!CheckFinalTx(*pcoin->tx))
             continue;
@@ -2387,8 +2379,6 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
         if (nDepth < nMinDepth || nDepth > nMaxDepth)
             continue;
 
-        int cnt = 0;
-
         for (unsigned int i = 0; i < pcoin->tx->vout.size(); i++) {
             if (pcoin->tx->vout[i].nValue < nMinimumAmount || pcoin->tx->vout[i].nValue > nMaximumAmount)
                 continue;
@@ -2413,8 +2403,6 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
 
             vCoins.push_back(COutput(pcoin, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
 
-            cnt++;
-
             // Checks the sum amount of all UTXO's.
             if (nMinimumSumAmount != MAX_MONEY) {
                 nTotal += pcoin->tx->vout[i].nValue;
@@ -2429,8 +2417,6 @@ void CWallet::AvailableCoins(std::vector<COutput> &vCoins, bool fOnlySafe, const
                 return;
             }
         }
-
-        if (cnt == 0) const_cast<CWalletTx*>(pcoin)->mapValue["all_spent"] = "1";
     }
 }
 
