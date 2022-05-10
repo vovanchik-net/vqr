@@ -322,16 +322,9 @@ struct CAddressKey {
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(script);
-        READWRITE(out);
-        if (ser_action.ForRead()) {
-            if (s.size() == 0) {
-                stype = 0;
-            } else {
-                READWRITE(stype);
-            }
-        } else if (stype != 0) {
-            READWRITE(stype);
-        }
+        READWRITE(out.hash);
+        READWRITE(VARINT(out.n));
+        READWRITE(VARINT(stype));
     }
 
     CAddressKey(const CScript& pscript, const COutPoint& pout);
@@ -366,19 +359,12 @@ struct CAddressValue {
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(value);
-        if (ser_action.ForRead()) {
-            uint32_t code = 0;
-            READWRITE(code);
-            height = code >> 1;
-            iscoinbase = code & 1;
-        } else {
-            uint32_t code = height << 1 + (iscoinbase ? 1 : 0);
-            READWRITE(code);
-        }
+        READWRITE(height);
+        READWRITE(iscoinbase);
         READWRITE(spend_height);
         if (spend_height > 0) {
             READWRITE(spend_hash);
-            READWRITE(spend_n);
+            READWRITE(VARINT(spend_n));
         }
     }
 

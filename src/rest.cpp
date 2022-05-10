@@ -959,7 +959,7 @@ bool api_address (HTTPRequest* req, const std::string& strURIPart) {
         output.pushKV("height", (int64_t)it.second.height);
         const CBlockIndex* pi = chainActive[it.second.height];
         if (pi) output.pushKV("time", pi->GetBlockTime());
-        if (it.first.stype == 0) output.pushKV("script", HexStr(it.first.script.begin(), it.first.script.end()));
+        if (it.first.stype != 0) output.pushKV("script", HexStr(it.first.script.begin(), it.first.script.end()));
         if (isspent) {
             total_out++;
             send_amount += it.second.value;
