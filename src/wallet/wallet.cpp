@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -2177,80 +2177,27 @@ void CWallet::ResendWalletTransactions(int64_t nBestBlockTime, CConnman* connman
  * @{
  */
 
-
-CAmount CWallet::GetBalance(const isminefilter& filter, const int min_depth) const
-{
-    CAmount nTotal = 0;
-    {
-        LOCK2(cs_main, cs_wallet);
-        for (const auto& entry : mapWallet)
-        {
-            const CWalletTx* pcoin = &entry.second;
-            if (pcoin->IsTrusted() && pcoin->GetDepthInMainChain() >= min_depth) {
-                nTotal += pcoin->GetAvailableCredit(true, filter);
-            }
-        }
+BalanceInfo CWallet::GetBalance (int min_depth) const {
+    BalanceInfo ret;
+    ret.Total = ret.Unconfirmed = ret.Immature = 0;
+    ret.TotalWatchOnly = ret.UnconfirmedWatchOnly = ret.ImmatureWatchOnly = 0;
+    LOCK2(cs_main, cs_wallet);
+    for (const auto& entry : mapWallet) {
+        const CWalletTx* pcoin = &entry.second;
+        bool isTrusted = pcoin->IsTrusted();
+        int depth = pcoin->GetDepthInMainChain();
+        if (isTrusted && depth >= min_depth)
+            ret.Total += pcoin->GetAvailableCredit(true, ISMINE_SPENDABLE);
+        if (!isTrusted && depth == 0 && pcoin->InMempool())
+            ret.Unconfirmed += pcoin->GetAvailableCredit();
+        ret.Immature += pcoin->GetImmatureCredit();
+        if (isTrusted && depth >= min_depth)
+            ret.TotalWatchOnly += pcoin->GetAvailableCredit(true, ISMINE_WATCH_ONLY);
+        if (!isTrusted && depth == 0 && pcoin->InMempool())
+            ret.UnconfirmedWatchOnly += pcoin->GetAvailableCredit(true, ISMINE_WATCH_ONLY);
+        ret.ImmatureWatchOnly += pcoin->GetImmatureWatchOnlyCredit();
     }
-
-    return nTotal;
-}
-
-CAmount CWallet::GetUnconfirmedBalance() const
-{
-    CAmount nTotal = 0;
-    {
-        LOCK2(cs_main, cs_wallet);
-        for (const auto& entry : mapWallet)
-        {
-            const CWalletTx* pcoin = &entry.second;
-            if (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0 && pcoin->InMempool())
-                nTotal += pcoin->GetAvailableCredit();
-        }
-    }
-    return nTotal;
-}
-
-CAmount CWallet::GetImmatureBalance() const
-{
-    CAmount nTotal = 0;
-    {
-        LOCK2(cs_main, cs_wallet);
-        for (const auto& entry : mapWallet)
-        {
-            const CWalletTx* pcoin = &entry.second;
-            nTotal += pcoin->GetImmatureCredit();
-        }
-    }
-    return nTotal;
-}
-
-CAmount CWallet::GetUnconfirmedWatchOnlyBalance() const
-{
-    CAmount nTotal = 0;
-    {
-        LOCK2(cs_main, cs_wallet);
-        for (const auto& entry : mapWallet)
-        {
-            const CWalletTx* pcoin = &entry.second;
-            if (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0 && pcoin->InMempool())
-                nTotal += pcoin->GetAvailableCredit(true, ISMINE_WATCH_ONLY);
-        }
-    }
-    return nTotal;
-}
-
-CAmount CWallet::GetImmatureWatchOnlyBalance() const
-{
-    CAmount nTotal = 0;
-    {
-        LOCK2(cs_main, cs_wallet);
-        for (const auto& entry : mapWallet)
-        {
-            const CWalletTx* pcoin = &entry.second;
-            nTotal += pcoin->GetImmatureWatchOnlyCredit();
-        }
-    }
-    return nTotal;
+    return ret;
 }
 
 // Calculate total balance in a different way from GetBalance. The biggest
@@ -3212,13 +3159,7 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
     }
 
     // Calculate coin age reward
-    {
-        uint64_t nCoinAge;
-        CCoinsViewCache view(pcoinsTip.get());
-        if (!GetCoinAge(txNew, view, nCoinAge, header.nTime, consensus))
-            return error("CreateCoinStake : failed to calculate coin age");
-        nPosReward = GetProofOfStakeReward(nCoinAge, chainActive.Height()+1, consensus);
-    }
+    nPosReward = GetProofOfStakeReward(chainActive.Height()+1, consensus);
 
     CFeeRate minFeeRate = CFeeRate(DEFAULT_TRANSACTION_MINFEE);
     CAmount nMinFee = 0;

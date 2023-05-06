@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -77,11 +77,11 @@ public:
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork =
-            uint256S("0x00"); // 0
+            uint256S("0x0000000000000000000000000000000000000000000000000000828f4f1630b4"); // 250000
 
         // By default assume that the signatures in ancestors of this block are valid.
         consensus.defaultAssumeValid =
-            uint256S("0x92c7ccfc6b522d45e7521882266b5001ac374417004fb1efa834b02179510602"); // 50000
+            uint256S("0x44f3c0d8591b150136d7641da8f4d1cf357dbcd8513de79fd3cbcb4697642eb8"); // 250000
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -107,9 +107,9 @@ public:
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
         vSeeds.clear();
-        vSeeds.emplace_back("seed1.vovanchik.net");
-        vSeeds.emplace_back("seed2.vovanchik.net");
-        vSeeds.emplace_back("seed3.vovanchik.net");
+        vSeeds.emplace_back("vqrseed1.vovanchik.net");
+        vSeeds.emplace_back("vqrseed2.vovanchik.net");
+        vSeeds.emplace_back("vqrseed3.vovanchik.net");
 
         base58Prefixes[PUBKEY_ADDRESS] = {0x03, 0x9F, 0x98};
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 173);
@@ -128,8 +128,11 @@ public:
 
         checkpointData = {
             {
-                {    0, uint256S("0x0000000bafe43d32dcc3f0ee1e6a685cd310527a30103cb1e8da79eac595a247")},
-                {50000, uint256S("0x92c7ccfc6b522d45e7521882266b5001ac374417004fb1efa834b02179510602")},
+                {     0, uint256S("0x0000000bafe43d32dcc3f0ee1e6a685cd310527a30103cb1e8da79eac595a247")},
+                { 50000, uint256S("0x92c7ccfc6b522d45e7521882266b5001ac374417004fb1efa834b02179510602")},
+                {100000, uint256S("0xc9e2e41bbb67fac8219fc5826f366414eae2636f745d57b2d780ebbb5b53aed7")},
+                {250000, uint256S("0x44f3c0d8591b150136d7641da8f4d1cf357dbcd8513de79fd3cbcb4697642eb8")},
+                {350000, uint256S("0xbfc9a591cea55b83f9f1036257337a61a79f0a76c9abdf3b830ab5b557edde29")},
             }
         };
 
@@ -186,9 +189,9 @@ public:
                uint256S("0x67cf72d107c8ebff08144311dfecea556286948da32a9ea039fc40b0944ee16c")); 
 
         vSeeds.clear();
-        vSeeds.emplace_back("seed1.vovanchik.net");
-        vSeeds.emplace_back("seed2.vovanchik.net");
-        vSeeds.emplace_back("seed3.vovanchik.net");
+        vSeeds.emplace_back("vqrseed1.vovanchik.net");
+        vSeeds.emplace_back("vqrseed2.vovanchik.net");
+        vSeeds.emplace_back("vqrseed3.vovanchik.net");
         vFixedSeeds.clear();
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_test, pnSeed6_test + ARRAYLEN(pnSeed6_test));
 

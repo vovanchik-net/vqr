@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -466,7 +466,7 @@ static UniValue getaddressesbyaccount(const JSONRPCRequest& request)
 
 static CTransactionRef SendMoney(CWallet * const pwallet, const CTxDestination &address, CAmount nValue, bool fSubtractFeeFromAmount, const CCoinControl& coin_control, mapValue_t mapValue, std::string fromAccount)
 {
-    CAmount curBalance = pwallet->GetBalance();
+    CAmount curBalance = pwallet->GetBalance().Total;
 
     // Check amount
     if (nValue <= 0)
@@ -927,7 +927,10 @@ static UniValue getbalance(const JSONRPCRequest& request)
         }
     }
 
-    return ValueFromAmount(pwallet->GetBalance(filter, min_depth));
+    BalanceInfo bal = pwallet->GetBalance(min_depth);
+    if (filter == ISMINE_ALL)
+        return ValueFromAmount(bal.Total + bal.TotalWatchOnly);
+    return ValueFromAmount(bal.Total);
 }
 
 static UniValue getunconfirmedbalance(const JSONRPCRequest &request)
@@ -950,7 +953,7 @@ static UniValue getunconfirmedbalance(const JSONRPCRequest &request)
 
     LOCK2(cs_main, pwallet->cs_wallet);
 
-    return ValueFromAmount(pwallet->GetUnconfirmedBalance());
+    return ValueFromAmount(pwallet->GetBalance().Unconfirmed);
 }
 
 
@@ -2885,9 +2888,10 @@ static UniValue getwalletinfo(const JSONRPCRequest& request)
     size_t kpExternalSize = pwallet->KeypoolCountExternalKeys();
     obj.pushKV("walletname", pwallet->GetName());
     obj.pushKV("walletversion", pwallet->GetVersion());
-    obj.pushKV("balance",       ValueFromAmount(pwallet->GetBalance()));
-    obj.pushKV("unconfirmed_balance", ValueFromAmount(pwallet->GetUnconfirmedBalance()));
-    obj.pushKV("immature_balance",    ValueFromAmount(pwallet->GetImmatureBalance()));
+    BalanceInfo bal = pwallet->GetBalance();
+    obj.pushKV("balance",       ValueFromAmount(bal.Total));
+    obj.pushKV("unconfirmed_balance", ValueFromAmount(bal.Unconfirmed));
+    obj.pushKV("immature_balance",    ValueFromAmount(bal.Immature));
     obj.pushKV("txcount",       (int)pwallet->mapWallet.size());
     obj.pushKV("keypoololdest", pwallet->GetOldestKeyPoolTime());
     obj.pushKV("keypoolsize", (int64_t)kpExternalSize);

@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -260,6 +260,8 @@ void Shutdown()
         pcoinscatcher.reset();
         pcoinsdbview.reset();
         pblocktree.reset();
+        if (fTxIndex) pblocktxindex.reset();
+        if (fAddressIndex) pblockaddressindex.reset();
     }
     g_wallet_init_interface.Stop();
 
@@ -539,7 +541,7 @@ void SetupServerArgs()
 
 std::string LicenseInfo()
 {
-    const std::string URL_SOURCE_CODE = "<https://github.com/vovanchik-net/vqr>";
+    const std::string URL_SOURCE_CODE = "<https://github.com/cryptadev/vqr>";
     const std::string URL_WEBSITE = "<https://vqr.vovanchik.net>";
 
     return CopyrightHolders(strprintf(_("Copyright (C) %i-%i"), 2009, COPYRIGHT_YEAR) + " ") + "\n" +
@@ -881,8 +883,12 @@ void InitParameterInteraction()
     }
 
     if (gArgs.GetBoolArg("-restapi", false)) {
-        gArgs.SoftSetArg("-rpcallowip", "0.0.0.0/0");
-        gArgs.SoftSetArg("-rpcallowip", "::/0");
+        int64_t port = gArgs.GetArg("-restapi", 1);
+        if (port > 1) gArgs.SoftSetArg("-rpcport", itostr(port));
+        if (!gArgs.IsArgSet("-rpcallowip")) {
+            gArgs.SoftSetArg("-rpcallowip", "0.0.0.0/0");
+            gArgs.SoftSetArg("-rpcallowip", "::/0");
+        }
     }
 
     // Warn if network-specific options (-addnode, -connect, etc) are
@@ -1035,6 +1041,10 @@ bool AppInitParameterInteraction()
         InitWarning(strprintf(_("Reducing -maxconnections from %d to %d, because of system limitations."), nUserMaxConnections, nMaxConnections));
 
     // ********************************************************* Step 3: parameter-to-internal-flags
+
+    g_logger->EnableCategory("mempool");
+    g_logger->EnableCategory("mempoolrej");
+    g_logger->EnableCategory("rpc");
     if (gArgs.IsArgSet("-debug")) {
         // Special-case: if -debug=0/-nodebug is set, turn off debugging messages
         const std::vector<std::string> categories = gArgs.GetArgs("-debug");
@@ -1514,6 +1524,11 @@ bool AppInitMain()
                     strLoadError = _("Error loading block database");
                     break;
                 }
+
+                if (fTxIndex) pblocktxindex.reset();
+                if (fTxIndex) pblocktxindex.reset(new CTxIndexDB(fReset));
+                if (fAddressIndex) pblockaddressindex.reset();
+                if (fAddressIndex) pblockaddressindex.reset(new CAddressIndexDB(fReset));
 
                 // If the loaded chain has a wrong genesis, bail out immediately
                 // (we're likely using a testnet datadir, or the other way around).

@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -65,8 +65,8 @@ namespace {
     {
         bool operator()(const CBlockIndex *pa, const CBlockIndex *pb) const {
             // First sort by most total work, ...
-            if (pa->nChainWork > pb->nChainWork) return false;
-            if (pa->nChainWork < pb->nChainWork) return true;
+            if (pa->nChainWork() > pb->nChainWork()) return false;
+            if (pa->nChainWork() < pb->nChainWork()) return true;
 
             // Identical blocks.
             return false;
@@ -253,6 +253,9 @@ namespace {
 std::unique_ptr<CCoinsViewDB> pcoinsdbview;
 std::unique_ptr<CCoinsViewCache> pcoinsTip;
 std::unique_ptr<CBlockTreeDB> pblocktree;
+std::unique_ptr<CTxIndexDB> pblocktxindex;
+std::unique_ptr<CAddressIndexDB> pblockaddressindex;
+
 bool isStakeRepeatAddr = false;
 
 enum class FlushStateMode {
@@ -1026,7 +1029,7 @@ bool GetTransaction(const uint256& hash, CTransactionRef& txOut, const Consensus
 
         if (fTxIndex) {
             CDiskTxPos postx;
-            if (!pblocktree->ReadTxIndex(hash, postx)) return false;
+            if (!pblocktxindex->Read(hash, postx)) return false;
             CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);
             if (file.IsNull()) return error("%s: OpenBlockFile failed", __func__);
             CBlockHeader header;
@@ -1135,52 +1138,6 @@ bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus
     return true;
 }
 
-bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CDiskBlockPos& pos, const CMessageHeader::MessageStartChars& message_start)
-{
-    CDiskBlockPos hpos = pos;
-    hpos.nPos -= 8; // Seek back 8 bytes for meta header
-    CAutoFile filein(OpenBlockFile(hpos, true), SER_DISK, CLIENT_VERSION);
-    if (filein.IsNull()) {
-        return error("%s: OpenBlockFile failed for %s", __func__, pos.ToString());
-    }
-
-    try {
-        CMessageHeader::MessageStartChars blk_start;
-        unsigned int blk_size;
-
-        filein >> blk_start >> blk_size;
-
-        if (memcmp(blk_start, message_start, CMessageHeader::MESSAGE_START_SIZE)) {
-            return error("%s: Block magic mismatch for %s: %s versus expected %s", __func__, pos.ToString(),
-                    HexStr(blk_start, blk_start + CMessageHeader::MESSAGE_START_SIZE),
-                    HexStr(message_start, message_start + CMessageHeader::MESSAGE_START_SIZE));
-        }
-
-        if (blk_size > MAX_SIZE) {
-            return error("%s: Block data is larger than maximum deserialization size for %s: %s versus %s", __func__, pos.ToString(),
-                    blk_size, MAX_SIZE);
-        }
-
-        block.resize(blk_size); // Zeroing of memory is intentional here
-        filein.read((char*)block.data(), blk_size);
-    } catch(const std::exception& e) {
-        return error("%s: Read from block file failed: %s for %s", __func__, e.what(), pos.ToString());
-    }
-
-    return true;
-}
-
-bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex, const CMessageHeader::MessageStartChars& message_start)
-{
-    CDiskBlockPos block_pos;
-    {
-        LOCK(cs_main);
-        block_pos = pindex->GetBlockPos();
-    }
-
-    return ReadRawBlockFromDisk(block, block_pos, message_start);
-}
-
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
     if (nHeight <= consensusParams.LastPoWHeight) {
@@ -1190,7 +1147,7 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 }
 
 // ppcoin: miner's coin stake is rewarded based on coin age spent (coin-days)
-CAmount GetProofOfStakeReward(int64_t nCoinAge, int nHeight, const Consensus::Params& consensusParams)
+CAmount GetProofOfStakeReward(int nHeight, const Consensus::Params& consensusParams)
 {
     if (nHeight <= consensusParams.LastPoWHeight) {
         return 500 * COIN;
@@ -1216,7 +1173,7 @@ bool IsInitialBlockDownload()
         return true;
     if (chainActive.Tip() == nullptr)
         return true;
-    if (chainActive.Tip()->nChainWork < nMinimumChainWork)
+    if (chainActive.Tip()->nChainWork() < nMinimumChainWork)
         return true;
     if (chainActive.Tip()->GetBlockTime() < (GetTime() - nMaxTipAge))
         return true;
@@ -1258,7 +1215,7 @@ static void CheckForkWarningConditions()
     if (pindexBestForkTip && chainActive.Height() - pindexBestForkTip->nHeight >= 72)
         pindexBestForkTip = nullptr;
 
-    if (pindexBestForkTip || (pindexBestInvalid && pindexBestInvalid->nChainWork > chainActive.Tip()->nChainWork + (GetBlockProof(*chainActive.Tip()) * 6)))
+    if (pindexBestForkTip || (pindexBestInvalid && pindexBestInvalid->nChainWork() > chainActive.Tip()->nChainWork() + (GetBlockProof(*chainActive.Tip()) * 6)))
     {
         if (!GetfLargeWorkForkFound() && pindexBestForkBase)
         {
@@ -1309,7 +1266,7 @@ static void CheckForkWarningConditionsOnNewFork(CBlockIndex* pindexNewForkTip)
     // We define it this way because it allows us to only store the highest fork tip (+ base) which meets
     // the 7-block condition and from this always have the most-likely-to-cause-warning fork
     if (pfork && (!pindexBestForkTip || pindexNewForkTip->nHeight > pindexBestForkTip->nHeight) &&
-            pindexNewForkTip->nChainWork - pfork->nChainWork > (GetBlockProof(*pfork) * 7) &&
+            pindexNewForkTip->nChainWork() - pfork->nChainWork() > (GetBlockProof(*pfork) * 7) &&
             chainActive.Height() - pindexNewForkTip->nHeight < 72)
     {
         pindexBestForkTip = pindexNewForkTip;
@@ -1321,16 +1278,16 @@ static void CheckForkWarningConditionsOnNewFork(CBlockIndex* pindexNewForkTip)
 
 void static InvalidChainFound(CBlockIndex* pindexNew)
 {
-    if (!pindexBestInvalid || pindexNew->nChainWork > pindexBestInvalid->nChainWork)
+    if (!pindexBestInvalid || pindexNew->nChainWork() > pindexBestInvalid->nChainWork())
         pindexBestInvalid = pindexNew;
 
     LogPrintf("%s: invalid block=%s  height=%d  log2_work=%.8g  date=%s\n", __func__,
       pindexNew->GetBlockHash().ToString(), pindexNew->nHeight,
-      log(pindexNew->nChainWork.getdouble())/log(2.0), FormatISO8601DateTime(pindexNew->GetBlockTime()));
+      log(pindexNew->nChainWork().getdouble())/log(2.0), FormatISO8601DateTime(pindexNew->GetBlockTime()));
     CBlockIndex *tip = chainActive.Tip();
     assert (tip);
     LogPrintf("%s:  current best=%s  height=%d  log2_work=%.8g  date=%s\n", __func__,
-      tip->GetBlockHash().ToString(), chainActive.Height(), log(tip->nChainWork.getdouble())/log(2.0),
+      tip->GetBlockHash().ToString(), chainActive.Height(), log(tip->nChainWork().getdouble())/log(2.0),
       FormatISO8601DateTime(tip->GetBlockTime()));
     CheckForkWarningConditions();
 }
@@ -1571,6 +1528,51 @@ static bool AbortNode(CValidationState& state, const std::string& strMessage, co
 
 } // namespace
 
+std::map<CScript, std::pair<int, AddressInfo> > historyCache;
+CCriticalSection historyCacheLock;
+
+void CleanAddressInfo (int hei = 0, bool dolock = true) {
+    if (dolock) LOCK(historyCacheLock);
+    auto it1 = historyCache.begin();
+    while (it1 != historyCache.end()) {
+        if (it1->second.first == hei) { ++it1; } else { it1 = historyCache.erase (it1); }
+    }
+}
+
+bool GetAddressInfo (const CScript& script, AddressInfo& data) {
+    LOCK(historyCacheLock);
+    int hei = chainActive.Height();
+    if (historyCache.count(script) > 0) {
+        auto& item = historyCache[script];
+        if (item.first == hei) {
+            data = item.second;
+            return true;
+        } else CleanAddressInfo (hei, false); 
+    }
+    std::map<CAddressKey, CAddressValue> retmap;
+    if (pblockaddressindex) pblockaddressindex->Read (script, retmap);
+    std::vector<std::pair<CAddressKey, CAddressValue> > retvec;
+    for (const auto& item : retmap)
+        retvec.push_back(std::make_pair(item.first, item.second));
+    std::sort(retvec.begin(), retvec.end(), 
+        [](const std::pair<CAddressKey, CAddressValue>& l, const std::pair<CAddressKey, CAddressValue>& r) {
+            return l.second.height > r.second.height; });
+    data.receive_amount = data.send_amount = 0;
+    data.total_in = data.total_out = 0;
+    for (const auto& it : retvec) {
+        data.total_in++;
+        data.receive_amount += it.second.value;
+        if (it.second.spend_height != 0) {
+            data.total_out++;
+            data.send_amount += it.second.value;
+        }
+        if ((it.second.spend_height != 0) && (data.total_max > 0) && (data.total_out > data.total_max)) continue;
+        data.data.push_back(std::make_pair(it.first, it.second));
+    }
+    historyCache[script] = std::make_pair(hei, data);
+    return true;
+}
+
 /**
  * Restore the UTXO in a Coin at a given COutPoint
  * @param undo The Coin to be restored.
@@ -1622,20 +1624,11 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
         return DISCONNECT_FAILED;
     }
 
-    std::vector<std::pair<CAddressKey, CAddressValue>> addressKeyValue;
-
     // undo transactions in reverse order
     for (int i = block.vtx.size() - 1; i >= 0; i--) {
         const CTransaction &tx = *(block.vtx[i]);
         uint256 hash = tx.GetHash();
         bool is_coinbase = tx.IsCoinBase();
-
-        for (unsigned int k = tx.vout.size(); k-- > 0;) {
-            if (!fAddressIndex) break;
-            const CTxOut &out = tx.vout[k];
-            if (out.scriptPubKey.IsUnspendable()) continue;
-            addressKeyValue.push_back(std::make_pair(CAddressKey(out.scriptPubKey, COutPoint(hash, k)), CAddressValue()));
-        }
 
         // Check that all outputs are available and match the outputs in the block itself
         // exactly.
@@ -1643,6 +1636,8 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
             if (!tx.vout[o].scriptPubKey.IsUnspendable()) {
                 COutPoint out(hash, o);
                 Coin coin;
+                if (fAddressIndex)
+                    pblockaddressindex->Write (CAddressKey(tx.vout[o].scriptPubKey, out), CAddressValue());
                 bool is_spent = view.SpendCoin(out, &coin);
                 if (!is_spent || tx.vout[o] != coin.out || pindex->nHeight != coin.nHeight || is_coinbase != coin.fCoinBase) {
                     fClean = false; // transaction output mismatch
@@ -1659,22 +1654,16 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
             }
             for (unsigned int j = tx.vin.size(); j-- > 0;) {
                 const COutPoint &out = tx.vin[j].prevout;
+                if (fAddressIndex) {
+                    const Coin& coin = txundo.vprevout[j];
+                    pblockaddressindex->Write (CAddressKey(coin.out.scriptPubKey, out),
+                                CAddressValue(coin.out.nValue, coin.nHeight, coin.IsCoinBase()));
+                }
                 int res = ApplyTxInUndo(std::move(txundo.vprevout[j]), view, out);
                 if (res == DISCONNECT_FAILED) return DISCONNECT_FAILED;
                 fClean = fClean && res != DISCONNECT_UNCLEAN;
-                if (!fAddressIndex) continue;
-                const Coin &coin = view.AccessCoin(out);
-                addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, out), 
-                            CAddressValue(coin.out.nValue, coin.nHeight, coin.IsCoinBase())));
             }
             // At this point, all of txundo.vprevout should have been moved out.
-        }
-    }
-
-    if (fAddressIndex) {
-        if (!pblocktree->WriteAddress(addressKeyValue)) {
-            AbortNode("Failed to write address");
-            return DISCONNECT_FAILED;
         }
     }
 
@@ -1772,18 +1761,11 @@ static bool WriteTxIndexDataForBlock(const CBlock& block, CValidationState& stat
     if (!fTxIndex) return true;
 
     CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
-    std::vector<std::pair<uint256, CDiskTxPos> > vPos;
-    vPos.reserve(block.vtx.size());
     for (const CTransactionRef& tx : block.vtx)
     {
-        vPos.push_back(std::make_pair(tx->GetHash(), pos));
+        pblocktxindex->Write (tx->GetHash(), pos);
         pos.nTxOffset += ::GetSerializeSize(*tx, SER_DISK, CLIENT_VERSION);
     }
-
-    if (!pblocktree->WriteTxIndex(vPos)) {
-        return AbortNode(state, "Failed to write transaction index");
-    }
-
     return true;
 }
 
@@ -1888,7 +1870,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         if (pi) {
             if (pi->GetAncestor(pindex->nHeight) == pindex &&
                 pindexBestHeader->GetAncestor(pindex->nHeight) == pindex &&
-                pindexBestHeader->nChainWork >= nMinimumChainWork) {
+                pindexBestHeader->nChainWork() >= nMinimumChainWork) {
                 // This block is a member of the assumed verified chain and an ancestor of the best header.
                 // The equivalent time check discourages hash power from extorting the network via DOS attack
                 //  into accepting an invalid block through telling users they must manually set assumevalid.
@@ -1945,9 +1927,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int64_t nSigOpsCost = 0;
     blockundo.vtxundo.reserve(block.vtx.size() - 1);
     std::vector<PrecomputedTransactionData> txdata;
-    std::vector<std::pair<CAddressKey, CAddressValue>> addressKeyValue;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
-    CAmount posReward = 0;
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = *(block.vtx[i]);
@@ -1966,14 +1946,6 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                                  REJECT_INVALID, "bad-txns-accumulated-fee-outofrange");
             }
 
-            // consider second transaction in PoS block as a coinstake transaction
-            if (block.IsProofOfStake() && i == 1) {
-                uint64_t nCoinAge;
-                if (!GetCoinAge(tx, view, nCoinAge, block.GetBlockTime(), consensus))
-                    return error("CheckInputs() : %s unable to get coin age for coinstake", tx.GetHash().ToString());
-                posReward = GetProofOfStakeReward(nCoinAge, pindex->nHeight, consensus);
-            }
-
             // Check that transaction is BIP68 final
             // BIP68 lock checks (as opposed to nLockTime checks) must
             // be in ConnectBlock because they require the UTXO set
@@ -1986,14 +1958,12 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                 return state.DoS(100, error("%s: contains a non-BIP68-final transaction", __func__),
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
-        }
-
-        for (size_t j = 0; j < tx.vin.size(); j++) {
-            if (!fAddressIndex) break;
-            const Coin& coin = view.AccessCoin(tx.vin[j].prevout);
-            CAddressValue addrval(coin.out.nValue, coin.nHeight, coin.IsCoinBase(), pindex->nHeight, tx.GetHash(), j);
-            if (!fTxIndex) addrval.height = 0;
-            addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, tx.vin[j].prevout), addrval));
+            for (size_t j = 0; j < tx.vin.size(); j++) {
+                if (!fAddressIndex) break;
+                const Coin& coin = view.AccessCoin(tx.vin[j].prevout);
+                pblockaddressindex->Write (CAddressKey(coin.out.scriptPubKey, tx.vin[j].prevout), CAddressValue(coin.out.nValue, 
+                            fTxIndex ? coin.nHeight : 0, coin.IsCoinBase(), pindex->nHeight, tx.GetHash(), j));
+            }
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
@@ -2020,8 +1990,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             if (!fAddressIndex) break;
             const CTxOut &out = tx.vout[k];
             if (out.scriptPubKey.IsUnspendable()) continue;
-            addressKeyValue.push_back(std::make_pair(CAddressKey(out.scriptPubKey, COutPoint(tx.GetHash(), k)),
-                        CAddressValue(out.nValue, pindex->nHeight, tx.IsCoinBase())));
+            pblockaddressindex->Write (CAddressKey(out.scriptPubKey, COutPoint(tx.GetHash(), k)), 
+                        CAddressValue(out.nValue, pindex->nHeight, tx.IsCoinBase()));
         }
 
         CTxUndo undoDummy;
@@ -2037,7 +2007,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (block.IsProofOfWork()) {
         blockReward += GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
     } else { 
-        blockReward += posReward;
+        blockReward += GetProofOfStakeReward(pindex->nHeight, chainparams.GetConsensus());
     }
     if (block.vtx[0]->GetValueOut() != blockReward)
         return state.DoS(100, error("ConnectBlock() : coinstake pays too much (actual=%d vs limit=%d)",
@@ -2069,13 +2039,6 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (!WriteTxIndexDataForBlock(block, state, pindex))
         return false;
 
-    if (fAddressIndex) {
-        if (!pblocktree->WriteAddress(addressKeyValue)) {
-            AbortNode("Failed to write address");
-            return DISCONNECT_FAILED;
-        }
-    }
-
     assert(pindex->phashBlock);
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
@@ -2086,34 +2049,6 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int64_t nTime6 = GetTimeMicros(); nTimeCallbacks += nTime6 - nTime5;
     LogPrint(BCLog::BENCH, "    - Callbacks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime6 - nTime5), nTimeCallbacks * MICRO, nTimeCallbacks * MILLI / nBlocksTotal);
 
-    return true;
-}
-
-bool GetCoinAge(const CTransaction& tx, const CCoinsViewCache& view, uint64_t& nCoinAge, uint32_t nTime, const Consensus::Params& params)
-{
-    arith_uint256 bnCentSecond = 0;  // coin age in the unit of cent-seconds
-    nCoinAge = 0;
-    if (tx.IsCoinBase()) return true;
-    for (const CTxIn& txin : tx.vin) {
-        // First try finding the previous transaction in database
-        const COutPoint &prevout = txin.prevout;
-        Coin coin;
-        if (!view.GetCoin(prevout, coin))
-            return error("%s() : tx.vin not found in GetCoinAge()", __PRETTY_FUNCTION__);
-        
-        uint32_t time = 0xFFFFFFFF;
-        CBlockIndex* pi = chainActive[coin.nHeight];
-        if (pi) time = pi->GetBlockTime();
-
-        if (time + params.nCoinAgeTick*3 > nTime) continue;
-        int64_t nValueIn = coin.out.nValue;
-        bnCentSecond += arith_uint256(nValueIn) * (nTime - time) / CENT;
-        LogPrint(BCLog::SELECTCOINS, "coin age nValueIn=%-12lld nTimeDiff=%d bnCentSecond=%s\n", nValueIn, 
-            nTime - time, bnCentSecond.ToString());
-    }
-    arith_uint256 bnCoinDay = bnCentSecond * CENT / COIN / params.nCoinAgeTick;
-    LogPrint(BCLog::SELECTCOINS, "coin age bnCoinDay=%s\n", bnCoinDay.ToString());
-    nCoinAge = bnCoinDay.GetLow64();
     return true;
 }
 
@@ -2151,6 +2086,9 @@ bool CheckProofOfWork (const CBlockHeader& block, const Consensus::Params& param
     return !(UintToArith256(hash) > bnTarget);
 }
 
+void PruneOneUndoFile(const int fileNumber);
+void UnlinkPrunedUndoFiles(const std::set<int>& setFilesToPrune);
+
 /**
  * Update the on-disk chain state.
  * The caches and indexes are flushed depending on the mode we're called with
@@ -2166,10 +2104,12 @@ bool static FlushStateToDisk(const CChainParams& chainparams, CValidationState &
     static int64_t nLastWrite = 0;
     static int64_t nLastFlush = 0;
     std::set<int> setFilesToPrune;
+    std::set<int> setFilesToUndoPrune;
     bool full_flush_completed = false;
     try {
     {
         bool fFlushForPrune = false;
+        bool fFlushForUndoPrune = false;
         bool fDoFullFlush = false;
         LOCK(cs_LastBlockFile);
         if (fPruneMode && (fCheckForPruning || nManualPruneHeight > 0) && !fReindex) {
@@ -2187,6 +2127,21 @@ bool static FlushStateToDisk(const CChainParams& chainparams, CValidationState &
                 }
             }
         }
+        if (!fPruneMode && !fReindex && (chainActive.Height() > 100000)) {
+            const CBlockIndex* pi = chainActive.Tip();
+            if (pi) pi = pi->GetAncestor(chainActive.Height() - 100000);
+            int newfn = 0;
+            if (pi) newfn = pi->nFile;
+            if (newfn == nLastBlockFile) newfn--;
+            for (int fileNumber = 0; fileNumber < newfn; fileNumber++) {
+                if (vinfoBlockFile[fileNumber].nUndoSize == 0) continue;
+                PruneOneUndoFile(fileNumber);
+                setFilesToUndoPrune.insert(fileNumber);
+            }
+            if (!setFilesToUndoPrune.empty()) {
+                fFlushForUndoPrune = true;
+            }
+        }
         int64_t nNow = GetTimeMicros();
         // Avoid writing/flushing immediately after startup.
         if (nLastWrite == 0) {
@@ -2202,13 +2157,13 @@ bool static FlushStateToDisk(const CChainParams& chainparams, CValidationState &
         bool fCacheLarge = mode == FlushStateMode::PERIODIC && cacheSize > std::max((9 * nTotalSpace) / 10, nTotalSpace - MAX_BLOCK_COINSDB_USAGE * 1024 * 1024);
         // The cache is over the limit, we have to write now.
         bool fCacheCritical = mode == FlushStateMode::IF_NEEDED && cacheSize > nTotalSpace;
-        fCacheCritical |= mode == FlushStateMode::IF_NEEDED && nNow > nLastFlush + (int64_t) 600000000;
+        fCacheCritical |= mode == FlushStateMode::IF_NEEDED && nNow > nLastFlush + (int64_t) 1800000000;
         // It's been a while since we wrote the block index to disk. Do this frequently, so we don't need to redownload after a crash.
         bool fPeriodicWrite = mode == FlushStateMode::PERIODIC && nNow > nLastWrite + (int64_t)DATABASE_WRITE_INTERVAL * 1000000;
         // It's been very long since we flushed the cache. Do this infrequently, to optimize cache usage.
         bool fPeriodicFlush = mode == FlushStateMode::PERIODIC && nNow > nLastFlush + (int64_t)DATABASE_FLUSH_INTERVAL * 1000000;
         // Combine all conditions that result in a full cache flush.
-        fDoFullFlush = (mode == FlushStateMode::ALWAYS) || fCacheLarge || fCacheCritical || fPeriodicFlush || fFlushForPrune;
+        fDoFullFlush = (mode == FlushStateMode::ALWAYS) || fCacheLarge || fCacheCritical || fPeriodicFlush || fFlushForPrune || fFlushForUndoPrune;
         // Write blocks and block index to disk.
         if (fDoFullFlush || fPeriodicWrite) {
             // Depend on nMinDiskSpace to ensure we can write block index
@@ -2233,10 +2188,19 @@ bool static FlushStateToDisk(const CChainParams& chainparams, CValidationState &
                 if (!pblocktree->WriteBatchSync(vFiles, nLastBlockFile, vBlocks)) {
                     return AbortNode(state, "Failed to write to block index database");
                 }
+                if (fTxIndex && !pblocktxindex->Flush()) {
+                    return AbortNode(state, "Failed to write transaction index");
+                }
+                if (fAddressIndex && !pblockaddressindex->Flush()) {
+                    return AbortNode(state, "Failed to write addresses index");
+                }
+                CleanAddressInfo ();
             }
             // Finally remove any pruned files
             if (fFlushForPrune)
                 UnlinkPrunedFiles(setFilesToPrune);
+            if (fFlushForUndoPrune)
+                UnlinkPrunedUndoFiles(setFilesToUndoPrune);
             nLastWrite = nNow;
         }
         // Flush best chain related state. This can only be done if the blocks / block index write was also done.
@@ -2312,7 +2276,7 @@ void static UpdateTip(const CBlockIndex *pindexNew, const CChainParams& chainPar
 
     LogPrintf("%s: new best=%s height=%d version=0x%08x log2_work=%.8g tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)", __func__, /* Continued */
       pindexNew->GetBlockHash().ToString(), pindexNew->nHeight, pindexNew->nVersion,
-      log(pindexNew->nChainWork.getdouble())/log(2.0), (unsigned long)pindexNew->nChainTx,
+      log(pindexNew->nChainWork().getdouble())/log(2.0), (unsigned long)pindexNew->nChainTx,
       FormatISO8601DateTime(pindexNew->GetBlockTime()),
       GuessVerificationProgress(chainParams.TxData(), pindexNew), pcoinsTip->DynamicMemoryUsage() * (1.0 / (1<<20)), pcoinsTip->GetCacheSize());
     LogPrintf("\n");
@@ -2538,7 +2502,7 @@ CBlockIndex* CChainState::FindMostWorkChain() {
             bool fMissingData = !(pindexTest->nStatus & BLOCK_HAVE_DATA);
             if (fFailedChain || fMissingData) {
                 // Candidate chain is not usable (either invalid or missing data)
-                if (fFailedChain && (pindexBestInvalid == nullptr || pindexNew->nChainWork > pindexBestInvalid->nChainWork))
+                if (fFailedChain && (pindexBestInvalid == nullptr || pindexNew->nChainWork() > pindexBestInvalid->nChainWork()))
                     pindexBestInvalid = pindexNew;
                 CBlockIndex *pindexFailed = pindexNew;
                 // Remove the entire chain from the set.
@@ -2639,7 +2603,7 @@ bool CChainState::ActivateBestChainStep(CValidationState& state, const CChainPar
                 }
             } else {
                 PruneBlockIndexCandidates();
-                if (!pindexOldTip || chainActive.Tip()->nChainWork > pindexOldTip->nChainWork) {
+                if (!pindexOldTip || chainActive.Tip()->nChainWork() > pindexOldTip->nChainWork()) {
                     // We're in a better position than we were. Return temporarily to release the lock.
                     fContinue = false;
                     break;
@@ -2804,7 +2768,7 @@ bool CChainState::PreciousBlock(CValidationState& state, const CChainParams& par
 {
     {
         LOCK(cs_main);
-        if (pindex->nChainWork < chainActive.Tip()->nChainWork) {
+        if (pindex->nChainWork() < chainActive.Tip()->nChainWork()) {
             // Nothing to do, this block is not at the tip.
             return true;
         }
@@ -2949,9 +2913,9 @@ CBlockIndex* CChainState::AddToBlockIndex(const CBlockHeader& block)
         pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
         pindexNew->BuildSkip();
     }
-    pindexNew->nChainWork = (pindexNew->pprev ? pindexNew->pprev->nChainWork : 0) + GetBlockProof(*pindexNew);
+    pindexNew->nChainWork_set ((pindexNew->pprev ? pindexNew->pprev->nChainWork() : 0) + GetBlockProof(*pindexNew));
     pindexNew->RaiseValidity(BLOCK_VALID_TREE);
-    if (pindexBestHeader == nullptr || pindexBestHeader->nChainWork < pindexNew->nChainWork)
+    if (pindexBestHeader == nullptr || pindexBestHeader->nChainWork() < pindexNew->nChainWork())
         pindexBestHeader = pindexNew;
 
     setDirtyBlockIndex.insert(pindexNew);
@@ -3498,7 +3462,7 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
     // process an unrequested block if it's new and has enough work to
     // advance our tip, and isn't too many blocks ahead.
     bool fAlreadyHave = pindex->nStatus & BLOCK_HAVE_DATA;
-    bool fHasMoreOrSameWork = (chainActive.Tip() ? pindex->nChainWork >= chainActive.Tip()->nChainWork : true);
+    bool fHasMoreOrSameWork = (chainActive.Tip() ? pindex->nChainWork() >= chainActive.Tip()->nChainWork() : true);
     // Blocks that are too out-of-order needlessly limit the effectiveness of
     // pruning, because pruning will not delete block files that contain any
     // blocks which are too close in height to the tip.  Apply this test
@@ -3523,7 +3487,7 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
         // If our tip is behind, a peer could try to send us
         // low-work blocks on a fake chain that we would never
         // request; don't process these.
-        if (pindex->nChainWork < nMinimumChainWork) return true;
+        if (pindex->nChainWork() < nMinimumChainWork) return true;
     }
 
     if (pindex->nHeight > 0) { 
@@ -3741,6 +3705,23 @@ void PruneOneBlockFile(const int fileNumber)
     setDirtyFileInfo.insert(fileNumber);
 }
 
+/* Prune a block file (modify associated database entries)*/
+void PruneOneUndoFile(const int fileNumber)
+{
+    LOCK(cs_LastBlockFile);
+
+    for (const auto& entry : mapBlockIndex) {
+        CBlockIndex* pindex = entry.second;
+        if (pindex->nFile == fileNumber) {
+            pindex->nStatus &= ~BLOCK_HAVE_UNDO;
+            pindex->nUndoPos = 0;
+            setDirtyBlockIndex.insert(pindex);
+        }
+    }
+    
+    vinfoBlockFile[fileNumber].nUndoSize = 0;
+    setDirtyFileInfo.insert(fileNumber);
+}
 
 void UnlinkPrunedFiles(const std::set<int>& setFilesToPrune)
 {
@@ -3749,6 +3730,15 @@ void UnlinkPrunedFiles(const std::set<int>& setFilesToPrune)
         fs::remove(GetBlockPosFilename(pos, "blk"));
         fs::remove(GetBlockPosFilename(pos, "rev"));
         LogPrintf("Prune: %s deleted blk/rev (%05u)\n", __func__, *it);
+    }
+}
+
+void UnlinkPrunedUndoFiles(const std::set<int>& setFilesToPrune)
+{
+    for (std::set<int>::iterator it = setFilesToPrune.begin(); it != setFilesToPrune.end(); ++it) {
+        CDiskBlockPos pos(*it, 0);
+        fs::remove(GetBlockPosFilename(pos, "rev"));
+        LogPrintf("Prune: %s deleted rev (%05u)\n", __func__, *it);
     }
 }
 
@@ -3941,7 +3931,7 @@ bool CChainState::LoadBlockIndex(const Consensus::Params& consensus_params, CBlo
     for (const std::pair<int, CBlockIndex*>& item : vSortedByHeight)
     {
         CBlockIndex* pindex = item.second;
-        pindex->nChainWork = (pindex->pprev ? pindex->pprev->nChainWork : 0) + GetBlockProof(*pindex);
+        pindex->nChainWork_set ((pindex->pprev ? pindex->pprev->nChainWork() : 0) + GetBlockProof(*pindex));
         // We can link the chain of blocks for which we've received transactions at some point.
         // Pruned nodes may have deleted the block.
         if (pindex->nTx > 0) {
@@ -3962,7 +3952,7 @@ bool CChainState::LoadBlockIndex(const Consensus::Params& consensus_params, CBlo
         }
         if (pindex->IsValid(BLOCK_VALID_TRANSACTIONS) && (pindex->nChainTx || pindex->pprev == nullptr))
             setBlockIndexCandidates.insert(pindex);
-        if (pindex->nStatus & BLOCK_FAILED_MASK && (!pindexBestInvalid || pindex->nChainWork > pindexBestInvalid->nChainWork))
+        if (pindex->nStatus & BLOCK_FAILED_MASK && (!pindexBestInvalid || pindex->nChainWork() > pindexBestInvalid->nChainWork()))
             pindexBestInvalid = pindex;
         if (pindex->pprev)
             pindex->BuildSkip();

@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -118,13 +119,33 @@ public:
     bool ReadLastBlockFile(int &nFile);
     bool WriteReindexing(bool fReindexing);
     void ReadReindexing(bool &fReindexing);
-    bool ReadTxIndex(const uint256 &txid, CDiskTxPos &pos);
-    bool WriteTxIndex(const std::vector<std::pair<uint256, CDiskTxPos> > &vect);
-    bool WriteAddress (const std::vector<std::pair<CAddressKey, CAddressValue>> &vec);
-    bool ReadAddress (const CScript& script, std::vector<std::pair<CAddressKey, CAddressValue>> &vec);
     bool WriteFlag(const std::string &name, bool fValue);
     bool ReadFlag(const std::string &name, bool &fValue);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex);
+};
+
+class CTxIndexDB : public CDBWrapper
+{
+private:
+    std::map<uint256, CDiskTxPos> Cache;
+    CCriticalSection CacheLock;
+public:
+    explicit CTxIndexDB(bool fWipe);
+    bool Read (const uint256 &txid, CDiskTxPos &pos);
+    bool Write (const uint256 &txid, const CDiskTxPos &pos);
+    bool Flush ();
+};
+
+class CAddressIndexDB : public CDBWrapper
+{
+private:
+    std::map<CAddressKey, CAddressValue> Cache;
+    CCriticalSection CacheLock;
+public:
+    explicit CAddressIndexDB(bool fWipe);
+    bool Read (const CScript& script, std::map<CAddressKey, CAddressValue>& vec);
+    bool Write (const CAddressKey& key, const CAddressValue& value);
+    bool Flush ();
 };
 
 #endif // BITCOIN_TXDB_H

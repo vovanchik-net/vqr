@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -35,6 +35,8 @@
 
 class CBlockIndex;
 class CBlockTreeDB;
+class CTxIndexDB;
+class CAddressIndexDB;
 class CChainParams;
 class CCoinsViewDB;
 class CInv;
@@ -278,7 +280,7 @@ bool GetTransaction(const uint256& hash, CTransactionRef& tx, const Consensus::P
  */
 bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams, std::shared_ptr<const CBlock> pblock = std::shared_ptr<const CBlock>());
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams);
-CAmount GetProofOfStakeReward(int64_t nCoinAge,int nHeight, const Consensus::Params& consensusParams);
+CAmount GetProofOfStakeReward(int nHeight, const Consensus::Params& consensusParams);
 
 /** Guess verification progress (as a fraction between 0.0=genesis and 1.0=current tip). */
 double GuessVerificationProgress(const ChainTxData& data, const CBlockIndex* pindex);
@@ -389,7 +391,6 @@ void InitScriptExecutionCache();
 
 /** Functions for disk access for blocks */
 bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus::Params& consensusParams);
-bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex, const CMessageHeader::MessageStartChars& message_start);
 
 /** Functions for validating blocks and updating the block tree */
 
@@ -460,6 +461,8 @@ extern std::unique_ptr<CCoinsViewCache> pcoinsTip;
 
 /** Global variable that points to the active block tree (protected by cs_main) */
 extern std::unique_ptr<CBlockTreeDB> pblocktree;
+extern std::unique_ptr<CTxIndexDB> pblocktxindex;
+extern std::unique_ptr<CAddressIndexDB> pblockaddressindex;
 
 extern bool isStakeRepeatAddr;
 
@@ -493,10 +496,18 @@ inline bool IsBlockPruned(const CBlockIndex* pblockindex)
     return (fHavePruned && !(pblockindex->nStatus & BLOCK_HAVE_DATA) && pblockindex->nTx > 0);
 }
 
-bool GetCoinAge (const CTransaction& tx, const CCoinsViewCache& view, uint64_t& nCoinAge, uint32_t nTime,
-    const Consensus::Params& params);
 bool CheckProofOfWork (const CBlockHeader& block, const Consensus::Params& params); 
 bool CheckProofOfStake (const CBlockHeader& block, const Consensus::Params& params, const COutPoint &out, 
     CAmount value, uint32_t time);
+
+struct AddressInfo {
+    CAmount receive_amount, send_amount;
+    int total_in, total_out, total_max;
+    std::vector<std::pair<CAddressKey, CAddressValue> > data;
+
+    AddressInfo () : receive_amount(0), send_amount(0), total_in(0), total_out(0), total_max(-1), data() { }
+};
+
+bool GetAddressInfo (const CScript& script, AddressInfo& data);
     
 #endif // BITCOIN_VALIDATION_H

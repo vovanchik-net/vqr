@@ -1,5 +1,5 @@
 // Copyright (c) 2012-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -15,20 +15,17 @@
 CAddressKey::CAddressKey(const CScript& pscript, const COutPoint& pout) {
     script = pscript;
     out = pout;
-    stype = 0;
     if (script.size() == 67 && script[0] == 65 && script.back() == OP_CHECKSIG) {
         CTxDestination ar;
         if (ExtractDestination(script, ar)) script = GetScriptForDestination(ar);
-        stype = 1;
     }
     if (script.size() == 35 && script[0] == 33 && script.back() == OP_CHECKSIG) {
         CTxDestination ar;
         if (ExtractDestination(script, ar)) script = GetScriptForDestination(ar);
-        stype = 2;
     }
 }
 
-std::string CAddressKey::GetAddr () {
+std::string CAddressKey::GetAddr () const {
     CTxDestination ar;
     if (ExtractDestination (script, ar)) return EncodeDestination(ar);
     return ScriptToAsmStr (script);

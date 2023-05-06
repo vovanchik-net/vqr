@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -508,7 +509,7 @@ void POWMinerThread (int POWIndex) {
             if (ShutdownRequested()) break;
             if (POWIndex > POWCount) break;
             if (!isready) {
-                if (IsInitialBlockDownload()) { MilliSleep(5000); continue; } else { isready = true; }
+                if (IsInitialBlockDownload()) { MilliSleep(1000); continue; } else { isready = true; }
             }
             int64_t nTime = GetTimeMillis();
             std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(POWScript));
@@ -557,7 +558,7 @@ int generatePoWCoin (int nThreads) {
     if (nThreads > 255) { return POWCount; }
     if (POWCount > 0) {
         POWCount = 0;
-        while (POWWorked > 0) MilliSleep(200);
+        while (POWWorked > 0) MilliSleep(100);
     }
     if (nThreads == 0) return 0;
     if (GetWallets().size() == 0) return 0;
@@ -587,22 +588,24 @@ void POSMinerThread (int POSIndex) {
     RenameThread("coin-pos-miner");
     POSWorked++;
     unsigned int extra = 0;
+    int skip = 0;
     try {
         std::shared_ptr<CWallet> pwallet = GetWallets()[POSIndex-1];
         while (true) {
             if (ShutdownRequested()) break;
             if (POSIndex > POSCount) break;
             if (!isready) {
-                if (IsInitialBlockDownload()) { MilliSleep(3000); continue; } else { isready = true; }
+                if (IsInitialBlockDownload()) { MilliSleep(1000); continue; } else { isready = true; }
             }
-            if (pwallet->IsLocked(true)) { MilliSleep(3000); continue; };
-            if (!masternodeSync.IsSynced()) { MilliSleep(5000); continue; };
+            if (skip > 0) { skip--; MilliSleep(1000); continue; };
+            if (pwallet->IsLocked(true)) { skip = 3; continue; };
+            if (!masternodeSync.IsSynced()) { skip = 5; continue; };
             int count = 0;
             if (g_connman) g_connman->ForEachNode([&count](CNode* pnode) { count++; });
-            if (!g_connman || (count < 4)) { MilliSleep(3000); continue; };
+            if (!g_connman || (count < 4)) { skip = 5; continue; };
             bool fPoSCancel = false;
             std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewPoSBlock(fPoSCancel, pwallet));
-            if (fPoSCancel) { MilliSleep (2000); continue; }
+            if (fPoSCancel) { skip = 3; continue; }
             if (!pblocktemplate.get()) continue;
             CBlock *pblock = &pblocktemplate->block;
             IncrementExtraNonce(pblock, chainActive.Tip(), extra);
@@ -611,12 +614,12 @@ void POSMinerThread (int POSIndex) {
                 LogPrintf("POSMinerThread: proof-of-stake block found %s\n", pblock->GetHash().ToString());
                 std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
                 try {
-                    if (ProcessNewBlock(Params(), shared_pblock, true, nullptr)) { MilliSleep (10000); };
+                    if (ProcessNewBlock(Params(), shared_pblock, true, nullptr)) { skip = 30; };
                 } catch (...) {
                     PrintExceptionContinue(NULL, "POSMinerThread()");
                 }
             };
-            MilliSleep (3000);
+            MilliSleep (1000);
         };
     }
     catch (const boost::thread_interrupted&) {
@@ -640,7 +643,7 @@ int generatePoSCoin (int nThreads) {
     if (nThreads > GetWallets().size()) { nThreads = GetWallets().size(); }
     if (POSCount > 0) {
         POSCount = 0;
-        while (POSWorked > 0) MilliSleep(200);
+        while (POSWorked > 0) MilliSleep(100);
     }
     if (nThreads == 0) return 0;
     if (GetWallets().size() == 0) return 0;
