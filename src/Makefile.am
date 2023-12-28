@@ -90,7 +90,6 @@ endif
 .PHONY: FORCE check-symbols check-security
 # bitcoin core #
 BITCOIN_CORE_H = \
-  activemasternode.h \
   addrdb.h \
   addrman.h \
   base58.h \
@@ -117,8 +116,6 @@ BITCOIN_CORE_H = \
   core_io.h \
   core_memusage.h \
   cuckoocache.h \
-  dsnotificationinterface.h \
-  flat-database.h \
   fs.h \
   governance.h \
   httprpc.h \
@@ -138,13 +135,11 @@ BITCOIN_CORE_H = \
   masternode.h \
   memusage.h \
   merkleblock.h \
-  messagesigner.h \
   miner.h \
   net.h \
   net_processing.h \
   netaddress.h \
   netbase.h \
-  netfulfilledman.h \
   netmessagemaker.h \
   noui.h \
   outputtype.h \
@@ -222,7 +217,6 @@ libbitcoin_util_a-clientversion.$(OBJEXT): obj/build.h
 libbitcoin_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
 libbitcoin_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_server_a_SOURCES = \
-  activemasternode.cpp \
   addrdb.cpp \
   addrman.cpp \
   bloom.cpp \
@@ -230,7 +224,6 @@ libbitcoin_server_a_SOURCES = \
   chain.cpp \
   checkpoints.cpp \
   consensus/tx_verify.cpp \
-  dsnotificationinterface.cpp \
   httprpc.cpp \
   httpserver.cpp \
   init.cpp \
@@ -239,10 +232,8 @@ libbitcoin_server_a_SOURCES = \
   governance.cpp \
   masternode.cpp \
   merkleblock.cpp \
-  messagesigner.cpp \
   miner.cpp \
   net.cpp \
-  netfulfilledman.cpp \
   net_processing.cpp \
   noui.cpp \
   outputtype.cpp \

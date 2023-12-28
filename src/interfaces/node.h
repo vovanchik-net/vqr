@@ -234,6 +234,12 @@ public:
     using NotifyAdditionalDataSyncProgressChangedFn =
         std::function<void(int nSyncProgress)>;
     virtual std::unique_ptr<Handler> handleNotifyAdditionalDataSyncProgressChanged(NotifyAdditionalDataSyncProgressChangedFn fn) = 0;
+
+    using NotifyGenerateStateChangedFn =
+        std::function<void(int nGenCount)>;
+    virtual std::unique_ptr<Handler> handleNotifyGenerateStateChanged(NotifyGenerateStateChangedFn fn) = 0;
+
+    virtual void initNotifyState() = 0;
 };
 
 //! Return implementation of Node interface.

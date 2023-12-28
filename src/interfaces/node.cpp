@@ -12,6 +12,7 @@
 #include <init.h>
 #include <interfaces/handler.h>
 #include <interfaces/wallet.h>
+#include <miner.h>
 #include <net.h>
 #include <net_processing.h>
 #include <netaddress.h>
@@ -282,13 +283,23 @@ class NodeImpl : public Node
     std::unique_ptr<Handler> handleNotifyMasternodeListChanged(NotifyMasternodeListChangedFn fn) override
     {
         return MakeHandler(::uiInterface.NotifyMasternodeListChanged.connect(fn));
-    }     
+    }
     std::unique_ptr<Handler> handleNotifyAdditionalDataSyncProgressChanged(NotifyAdditionalDataSyncProgressChangedFn fn) override
     {
         return MakeHandler(
             ::uiInterface.NotifyAdditionalDataSyncProgressChanged.connect([fn](int nSyncProgress) {
                 fn(nSyncProgress);
             }));
+    }
+    std::unique_ptr<Handler> handleNotifyGenerateStateChanged(NotifyGenerateStateChangedFn fn) override
+    {
+        return MakeHandler(
+            ::uiInterface.NotifyGenerateStateChanged.connect([fn](int nGenCount) {
+                fn(nGenCount);
+            }));
+    }
+    void initNotifyState() override {
+        generateCoin (4096);
     }
 };
 

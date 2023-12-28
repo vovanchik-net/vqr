@@ -665,6 +665,9 @@ int generateCoin (int nThreads) {
         if (nThreads <= 1) nThreads = 1;
         generatePoWCoin (nThreads);
     }
+    if (POSCount > 0) { uiInterface.NotifyGenerateStateChanged(-POSCount); } else
+    if (POWCount > 0) { uiInterface.NotifyGenerateStateChanged(POWCount); } else
+                      { uiInterface.NotifyGenerateStateChanged(0); }
     if (POSCount > 0) return 0;
     if (POWCount > 0) return POWCount;
     return -1;

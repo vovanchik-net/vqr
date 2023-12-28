@@ -972,12 +972,6 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 
     case MSG_MASTERNODE_VERIFY:
         return mnodeman.mapSeenMasternodeVerification.count(inv.hash);
-
-    case MSG_MN:
-        return mns.exist(inv.hash);
-
-    case MSG_VOTE:
-        return mns.vote_exist(inv.hash);
     }
     // Don't know what it is, just say we already got one
     return true;
@@ -1282,22 +1276,6 @@ void static ProcessGetData(CNode* pfrom, const CChainParams& chainparams, CConnm
             if (!push && inv.type == MSG_MASTERNODE_VERIFY) {
                 if (mnodeman.mapSeenMasternodeVerification.count(inv.hash)) {
                     connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::MNVERIFY, mnodeman.mapSeenMasternodeVerification[inv.hash]));
-                    push = true;
-                }
-            }
-
-            if (!push && inv.type == MSG_MN) {
-                if (mns.exist(inv.hash)) {
-                    LOCK (mns.cs);
-                    connman->PushMessage(pfrom, msgMaker.Make("cmn", mns.mapMasternodes[inv.hash]));
-                    push = true;
-                }
-            }
-
-            if (!push && inv.type == MSG_VOTE) {
-                if (mns.vote_exist(inv.hash)) {
-                    LOCK (mns.cs);
-                    connman->PushMessage(pfrom, msgMaker.Make("cvote", mns.mapVotes[inv.hash]));
                     push = true;
                 }
             }
@@ -2603,63 +2581,16 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         // message would be undesirable as we transmit it ourselves.
     }
 
-    else if (strCommand == "cmn") {
-        CMN mn;
-        vRecv >> mn;
-        uint256 id = mn.hash();
-        if (mns.exist(id)) return true;
-        bool valid = mn.check();
-        mns.add (id, mn);
-        if (valid) {
-            CInv inv(MSG_MN, id);
-            connman->ForEachNode([&inv](CNode* pnode) { pnode->PushInventory(inv); });
-        }
-    }
-
-    else if (strCommand == "cvote") {
-        CMNVote vote;
-        vRecv >> vote;
-        uint256 id = vote.hash();
-        if (mns.vote_exist(id)) return true;
-        if (!mns.exist(vote.mn_id)) {
-            pfrom->AskFor(CInv(MSG_MN, vote.mn_id));
-            mns.vote_add (id, vote);
-            return true;
-        }
-        bool valid = vote.check();
-        mns.vote_add (id, vote);
-        if (valid) {
-            CInv inv(MSG_VOTE, id);
-            connman->ForEachNode([&inv](CNode* pnode) { pnode->PushInventory(inv); });
-        }
-    }
-
-    else if (strCommand == "cinit") {
-        LOCK (mns.cs);
-        for (auto& it : mns.mapVotes) {
-            CInv inv(MSG_VOTE, it.first);
-            pfrom->PushInventory(inv);
-        }
-    }
-
     else {
-        bool found = false;
-        const std::vector<std::string> &allMessages = getAllNetMessageTypes();
-        for (std::string msg : allMessages) {
-            if(msg == strCommand) { found = true; break; }
-        }
+        if (mnodeman.ProcessMessage(pfrom, strCommand, vRecv, *connman)) return true;
+        if (mnpayments.ProcessMessage(pfrom, strCommand, vRecv, *connman)) return true;
+        if (instantsend.ProcessMessage(pfrom, strCommand, vRecv, *connman)) return true;
+        if (masternodeSync.ProcessMessage(pfrom, strCommand, vRecv)) return true;
+        if (governance.ProcessMessage(pfrom, strCommand, vRecv, *connman)) return true;
+        if (votes.ProcessMessage(pfrom, strCommand, vRecv)) return true;
 
-        if (found) {
-            //probably one the extensions
-            mnodeman.ProcessMessage(pfrom, strCommand, vRecv, *connman);
-            mnpayments.ProcessMessage(pfrom, strCommand, vRecv, *connman);
-            instantsend.ProcessMessage(pfrom, strCommand, vRecv, *connman);
-            masternodeSync.ProcessMessage(pfrom, strCommand, vRecv);
-            governance.ProcessMessage(pfrom, strCommand, vRecv, *connman);
-        } else {
-            // Ignore unknown commands for extensibility
-            LogPrint(BCLog::NET, "Unknown command \"%s\" from peer=%d\n", SanitizeString(strCommand), pfrom->GetId());
-        }
+        // Ignore unknown commands for extensibility
+        LogPrint(BCLog::NET, "Unknown command \"%s\" from peer=%d\n", SanitizeString(strCommand), pfrom->GetId());
     }
 
     return true;

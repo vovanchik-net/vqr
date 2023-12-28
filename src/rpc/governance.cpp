@@ -1,8 +1,8 @@
 // Copyright (c) 2014-2020 The Dash Core developers
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <activemasternode.h>
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <key_io.h>
@@ -11,7 +11,6 @@
 #include <txmempool.h>
 #include <validation.h>
 #include <masternode.h>
-#include <messagesigner.h>
 #include <rpc/server.h>
 #include <util.h>
 #include <utilmoneystr.h>

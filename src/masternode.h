@@ -10,6 +10,17 @@
 #include <timedata.h>
 #include <net.h>
 
+#include <chainparams.h>
+#include <primitives/transaction.h>
+
+#include <netaddress.h>
+#include <serialize.h>
+#include <sync.h>
+
+#include <validationinterface.h>
+
+#include <chain.h>
+
 class CMasternode;
 class CMasternodeBroadcast;
 class CConnman;
@@ -579,7 +590,7 @@ public:
 
     bool UpdateLastVote(const CMasternodePaymentVote& vote);
 
-    void ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman);
+    bool ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman);
     std::string GetRequiredPaymentsString(int nBlockHeight) const;
     void FillBlockPayee(CMutableTransaction& txNew, int nBlockHeight, CAmount blockReward, CTxOut& txoutMasternodeRet) const;
     std::string ToString() const;
@@ -653,10 +664,9 @@ public:
     void Reset();
     void SwitchToNextAsset(CConnman& connman);
 
-    void ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv);
+    bool ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv);
     void ProcessTick(CConnman& connman);
 
-    void AcceptedBlockHeader(const CBlockIndex *pindexNew);
     void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload, CConnman& connman);
     void UpdatedBlockTip(const CBlockIndex *pindexNew, bool fInitialDownload, CConnman& connman);
 }; 
@@ -848,7 +858,7 @@ public:
     std::pair<CService, std::set<uint256> > PopScheduledMnbRequestConnection();
     void ProcessPendingMnbRequests(CConnman& connman);
 
-    void ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman);
+    bool ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman);
 
     void DoFullVerificationStep(CConnman& connman);
     void CheckSameAddr();
@@ -991,41 +1001,180 @@ void save_mn_dat ();
 
 extern CMasternodeConfig masternodeConfig;
 
-// new masternodes
+fs::path GetMasternodeConfigFile();
 
-enum CMNState {MN_PRE_ENABLED, MN_ENABLED, MN_EXPIRED, MN_DISABLED, MN_BAN};
+// activemasternode
 
-class CMN {
+static const int ACTIVE_MASTERNODE_INITIAL          = 0; // initial state
+static const int ACTIVE_MASTERNODE_SYNC_IN_PROCESS  = 1;
+static const int ACTIVE_MASTERNODE_INPUT_TOO_NEW    = 2;
+static const int ACTIVE_MASTERNODE_NOT_CAPABLE      = 3;
+static const int ACTIVE_MASTERNODE_STARTED          = 4;
+
+// Responsible for activating the Masternode and pinging the network
+class CActiveMasternode
+{
 public:
-    COutPoint outpoint;                     // uni
-    CService addr;                          // check TODO
-    CPubKey pkMasternode;
-    uint256 block_id;
-    std::vector<unsigned char> sig;
+    enum masternode_type_enum_t {
+        MASTERNODE_UNKNOWN = 0,
+        MASTERNODE_REMOTE  = 1
+    };
 
-    int nRegisteredHeight;                  // memonly
-    int nLastPaidHeight;                    // memonly
-    CMNState nState;                        // memonly
-    std::map<uint256, uint256> mapVotes;    // memonly  block_id = vote_id (576 max)
-    int nBanScore;                          // memonly  no vote(+1 from 4), wrong vote(+1), ok vote (-1 from 4) 
-    CScript scriptPayout;                   // memonly
-    int nLastModifyHeight;                  // memonly
+private:
+    // critical section to protect the inner data structures
+    mutable CCriticalSection cs;
 
-    CMN () : outpoint(), addr(), pkMasternode(), block_id(), sig(), nRegisteredHeight(0), nLastPaidHeight(0),
-                nState(MN_DISABLED), nBanScore(0), scriptPayout(), nLastModifyHeight(0) { };
+    masternode_type_enum_t eType;
+
+    bool fPingerEnabled;
+
+    /// Ping Masternode
+    bool SendMasternodePing(CConnman& connman);
+
+    //  sentinel ping data
+    int64_t nSentinelPingTime;
+    uint32_t nSentinelVersion;
+
+public:
+    // Keys for the active Masternode
+    CPubKey pubKeyMasternode;
+    CKey keyMasternode;
+
+    // Initialized while registering Masternode
+    COutPoint outpoint;
+    CService service;
+
+    int nState; // should be one of ACTIVE_MASTERNODE_XXXX
+    std::string strNotCapableReason;
+
+
+    CActiveMasternode()
+        : eType(MASTERNODE_UNKNOWN),
+          fPingerEnabled(false),
+          pubKeyMasternode(),
+          keyMasternode(),
+          outpoint(),
+          service(),
+          nState(ACTIVE_MASTERNODE_INITIAL)
+    {}
+
+    /// Manage state of active Masternode
+    void ManageState(CConnman& connman);
+    bool DoAnnounce (CConnman& connman, std::string& strError);
+
+    std::string GetStateString() const;
+    std::string GetStatus() const;
+    std::string GetTypeString() const;
+
+    bool UpdateSentinelPing(int version);
+
+private:
+    void ManageStateInitial(CConnman& connman);
+    void ManageStateRemote();
+};
+
+extern CActiveMasternode activeMasternode;
+
+extern bool fMasternodeMode;
+
+// messagesigner
+
+class CMessageSigner
+{
+public:
+    /// Set the private/public key values, returns true if successful
+    static bool GetKeysFromSecret(const std::string& strSecret, CKey& keyRet, CPubKey& pubkeyRet);
+    /// Sign the message, returns true if successful
+    static bool SignMessage(const std::string& strMessage, std::vector<unsigned char>& vchSigRet, const CKey& key);
+    /// Verify the message signature, returns true if succcessful
+    static bool VerifyMessage(const CPubKey& pubkey, const std::vector<unsigned char>& vchSig, const std::string& strMessage, std::string& strErrorRet);
+    /// Verify the message signature, returns true if succcessful
+    static bool VerifyMessage(const CKeyID& keyID, const std::vector<unsigned char>& vchSig, const std::string& strMessage, std::string& strErrorRet);
+};
+
+// netfulfilledman
+
+// Fulfilled requests are used to prevent nodes from asking for the same data on sync
+// and from being banned for doing so too often.
+class CNetFulfilledRequestManager {
+private:
+    std::map<std::string, int64_t> mapFulfilledRequests;
+    CCriticalSection cs_mapFulfilledRequests;
+    void RemoveFulfilledRequest(const CService& addr, const std::string& strRequest);
+
+public:
+    CNetFulfilledRequestManager() {}
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(outpoint);
+        LOCK(cs_mapFulfilledRequests);
+        READWRITE(mapFulfilledRequests);
+    }
+
+    void AddFulfilledRequest(const CService& addr, const std::string& strRequest);
+    bool HasFulfilledRequest(const CService& addr, const std::string& strRequest);
+
+    void CheckAndRemove();
+    void Clear();
+
+    std::string ToString() const;
+};
+
+extern CNetFulfilledRequestManager netfulfilledman;
+
+// dsnotificationinterface
+
+class CDSNotificationInterface : public CValidationInterface
+{
+public:
+    CDSNotificationInterface(CConnman& connmanIn): connman(connmanIn) {}
+    virtual ~CDSNotificationInterface() = default;
+
+    // a small helper to initialize current block height in sub-modules on startup
+    void InitializeCurrentBlockTip();
+
+protected:
+    // CValidationInterface
+    void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload) override;
+    void UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) override;
+    void BlockConnected(const std::shared_ptr<const CBlock> &pblock, const CBlockIndex *pindex, 
+        const std::vector<CTransactionRef> &vtxConflicted) override;
+
+private:
+    CConnman& connman;
+};
+
+// newest protect
+
+class CVote {
+public:
+    CService addr{};                      // 20
+    uint256 block_hash{};                 // 32
+    int block_height{0};                  //  4
+    CService verify_addr{};               // 20
+    CKeyID reward{};                      // 20
+    std::vector<unsigned char> sig{};     // 65
+    int state{0};
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(addr);
-        READWRITE(pkMasternode);
-        READWRITE(block_id);
+        READWRITE(block_hash);
+        READWRITE(block_height);
+        READWRITE(verify_addr);
+        READWRITE(reward);
         READWRITE(sig);
     }
 
-    uint256 hash (bool forsign = false) const;
+    uint256 hash () const {
+        CHashWriter hasher (SER_GETHASH, PROTOCOL_VERSION);
+        hasher << addr << block_hash << block_height << verify_addr << reward;
+        return hasher.GetHash();
+    }
 
     bool check ();
 
@@ -1034,58 +1183,45 @@ public:
     void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
 };
 
-class CMNVote {
+class CVotes {
 public:
-    uint256 mn_id;
-    uint256 block_id;
-    std::vector<unsigned char> sig;
-    int type;
-    std::vector<uint256> data;
+    CKey key;
+    CPubKey pubkey;
+    CService netaddr;
 
-    int nHeight;                            // memonly
-    int64_t time;                           // memonly
+    using CHashHei = std::pair<int, uint256>;
+    using CNodeID = std::pair<CService, CKeyID>;
+    using CNodeInfo = std::function<void(const CNodeID&, const CHashHei&, const CHashHei&)>;
 
-    CMNVote() : mn_id(), block_id(), sig(), type(0), data(), nHeight(0), time(0) { }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(mn_id);
-        READWRITE(block_id);
-        READWRITE(sig);
-        READWRITE(type);
-        READWRITE(data);
-    }
-
-    uint256 hash (bool forsign = false) const;
-
-    bool check ();
-
-    bool sign ();
-
-    void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
-};
-
-class CMNList {
-public:
-    CCriticalSection cs;
     CCriticalSection cs_pay;
-    std::map<uint256, CMN> mapMasternodes;
-    std::map<uint256, CMNVote> mapVotes;
-    std::map<std::pair<uint256, CScript>, int> mapPayouts;
+    std::map<CHashHei, CKeyID> mapPayouts;
+
+    CCriticalSection cs;
+    std::map<uint256, CVote> mapVotes, mapUnchecked;
+    std::map<CHashHei, std::set<CNodeID> > cacheVoting;             // HashID = from
+    std::map<CNodeID, std::pair<CHashHei, CHashHei> > cacheNodes;   // CNodeID = lastpaid, lastseen
+    std::map<CNodeID, std::map<CNodeID, CHashHei> > cacheVerify;    // <to, from>, HashID
+
+    CBlockIndex* last_index{};
 
     bool exist (const uint256& hash);
-    bool vote_exist (const uint256& hash);
-    void add (const uint256& id, CMN& mn);
-    void vote_add (const uint256& id, CMNVote& vote);
-    void tick (const CBlockIndex *pindex);
-    void update_pay (const uint256 &block_hash, int height, const CTransaction &tx);
-    void get_pay (const CScript &addr, int& from_height);
-    std::vector<uint256> get_pay_queue ();
+    void add (const uint256& hash, CVote& vote);
+    //void load ();
+    //void save ();
+
+    bool ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv);
+    void UpdatedBlockTip (const CBlockIndex *pindex); 
+    void BlockConnected (const std::shared_ptr<const CBlock> &pblock, const CBlockIndex *pindex);
+
+    void update_pay (const uint256& block_hash, int height, const CTransaction& tx);
+    int get_payheight (const CKeyID& addr);
+    uint256 calc_blockhash (int block_height);
+    CKeyID calc_payaddr (int block_height);
+
+    void enum_nodes (CNodeInfo enumfunc);                           // CNodeID, lastpaid, lastseen
     void dump (const std::string& border, std::function<void(std::string)> dumpfunc);
 };
 
-extern CMNList mns;
+extern CVotes votes;
 
 #endif

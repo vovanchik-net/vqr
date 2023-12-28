@@ -1,4 +1,5 @@
 // Copyright (c) 2014-2017 The Dash Core developers
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,8 +8,6 @@
 #include <net_processing.h>
 #include <netmessagemaker.h>
 #include <masternode.h>
-#include <messagesigner.h>
-#include <netfulfilledman.h>
 #include <util.h>
 #include <instantx.h>
 #include <core_io.h>
@@ -1154,14 +1153,13 @@ bool CGovernanceManager::SerializeVoteForHash(const uint256& nHash, CDataStream&
     return cmapVoteToObject.Get(nHash,pGovobj) && pGovobj->GetVoteFile().SerializeVoteToStream(nHash, ss);
 }
 
-void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman) {
-    if (!masternodeSync.IsBlockchainSynced()) return;
+bool CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman) {
     // ANOTHER USER IS ASKING US TO HELP THEM SYNC GOVERNANCE OBJECT DATA
     if (strCommand == NetMsgType::MNGOVERNANCESYNC) {
         // Ignore such requests until we are fully synced.
         // We could start processing this after masternode list is synced
         // but this is a heavy one so it's better to finish sync first.
-        if (!masternodeSync.IsSynced()) return;
+        if (!masternodeSync.IsSynced()) return true;
 
         uint256 nProp;
         CBloomFilter filter;
@@ -1176,6 +1174,7 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
             SyncSingleObjAndItsVotes(pfrom, nProp, filter, connman);
         }
         LogPrint(BCLog::MN, "MNGOVERNANCESYNC -- syncing governance objects to our peer at %s\n", pfrom->addr.ToString());
+        return true;
     }
     // A NEW GOVERNANCE OBJECT HAS ARRIVED
     else if (strCommand == NetMsgType::MNGOVERNANCEOBJECT) {
@@ -1189,7 +1188,7 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
 
         if (!masternodeSync.IsMasternodeListSynced()) {
             LogPrint(BCLog::MN, "MNGOVERNANCEOBJECT -- masternode list not synced\n");
-            return;
+            return true;
         }
 
         std::string strHash = nHash.ToString();
@@ -1198,7 +1197,7 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
 
         if (!AcceptObjectMessage(nHash)) {
             LogPrintf("MNGOVERNANCEOBJECT -- Received unrequested object: %s\n", strHash);
-            return;
+            return true;
         }
 
         LOCK2(cs_main, cs);
@@ -1207,13 +1206,13 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
                     mapErasedGovernanceObjects.count(nHash) || mapMasternodeOrphanObjects.count(nHash)) {
             // TODO - print error code? what if it's GOVOBJ_ERROR_IMMATURE?
             LogPrint(BCLog::MN, "MNGOVERNANCEOBJECT -- Received already seen object: %s\n", strHash);
-            return;
+            return true;
         }
 
         bool fRateCheckBypassed = false;
         if(!MasternodeRateCheck(govobj, true, false, fRateCheckBypassed)) {
             LogPrintf("MNGOVERNANCEOBJECT -- masternode rate check failed - %s - (current block height %d) \n", strHash, nCachedBlockHeight);
-            return;
+            return true;
         }
 
         std::string strError = "";
@@ -1226,7 +1225,7 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
         if (fRateCheckBypassed && (fIsValid || fMasternodeMissing)) {
             if(!MasternodeRateCheck(govobj, true)) {
                 LogPrintf("MNGOVERNANCEOBJECT -- masternode rate check failed (after signature verification) - %s - (current block height %d) \n", strHash, nCachedBlockHeight);
-                return;
+                return true;
             }
         }
 
@@ -1238,7 +1237,7 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
                     // ask for this object again in 2 minutes
                     CInv inv(MSG_GOVERNANCE_OBJECT, govobj.GetHash());
                     pfrom->AskFor(inv);
-                    return;
+                    return true;
                 }
                 count++;
                 ExpirationInfo info(pfrom->GetId(), GetAdjustedTime() + GOVERNANCE_ORPHAN_EXPIRATION_TIME);
@@ -1252,9 +1251,10 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
                 // apply node's ban score
                 Misbehaving(pfrom->GetId(), 20, "");
             }
-            return;
+            return true;
         }
         AddGovernanceObject(govobj, connman, pfrom);
+        return true;
     }
     // A NEW GOVERNANCE OBJECT VOTE HAS ARRIVED
     else if (strCommand == NetMsgType::MNGOVERNANCEOBJECTVOTE) {
@@ -1268,7 +1268,7 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
         // Ignore such messages until masternode list is synced
         if (!masternodeSync.IsMasternodeListSynced()) {
             LogPrint(BCLog::MN, "MNGOVERNANCEOBJECTVOTE -- masternode list not synced\n");
-            return;
+            return true;
         }
 
         LogPrint(BCLog::MN, "MNGOVERNANCEOBJECTVOTE -- Received vote: %s\n", vote.ToString());
@@ -1278,7 +1278,7 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
         if (!AcceptVoteMessage(nHash)) {
             LogPrint(BCLog::MN, "MNGOVERNANCEOBJECTVOTE -- Received unrequested vote object: %s, hash: %s, peer = %d\n",
                       vote.ToString(), strHash, pfrom->GetId());
-            return;
+            return true;
         }
 
         CGovernanceException exception;
@@ -1293,7 +1293,9 @@ void CGovernanceManager::ProcessMessage(CNode* pfrom, const std::string& strComm
                 Misbehaving(pfrom->GetId(), exception.GetNodePenalty(), "");
             }
         }
+        return true;
     }
+    return false;
 }
 
 void CGovernanceManager::CheckOrphanVotes(CGovernanceObject& govobj, CGovernanceException& exception, CConnman& connman) {

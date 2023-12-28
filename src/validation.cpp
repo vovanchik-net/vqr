@@ -1624,6 +1624,8 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
         return DISCONNECT_FAILED;
     }
 
+    std::vector<std::pair<CAddressKey, CAddressValue>> addressKeyValue;
+
     // undo transactions in reverse order
     for (int i = block.vtx.size() - 1; i >= 0; i--) {
         const CTransaction &tx = *(block.vtx[i]);
@@ -1637,7 +1639,7 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
                 COutPoint out(hash, o);
                 Coin coin;
                 if (fAddressIndex)
-                    pblockaddressindex->Write (CAddressKey(tx.vout[o].scriptPubKey, out), CAddressValue());
+                    addressKeyValue.push_back(std::make_pair(CAddressKey(tx.vout[o].scriptPubKey, out), CAddressValue()));
                 bool is_spent = view.SpendCoin(out, &coin);
                 if (!is_spent || tx.vout[o] != coin.out || pindex->nHeight != coin.nHeight || is_coinbase != coin.fCoinBase) {
                     fClean = false; // transaction output mismatch
@@ -1656,14 +1658,21 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
                 const COutPoint &out = tx.vin[j].prevout;
                 if (fAddressIndex) {
                     const Coin& coin = txundo.vprevout[j];
-                    pblockaddressindex->Write (CAddressKey(coin.out.scriptPubKey, out),
-                                CAddressValue(coin.out.nValue, coin.nHeight, coin.IsCoinBase()));
+                    addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, out), 
+                                CAddressValue(coin.out.nValue, coin.nHeight, coin.IsCoinBase())));
                 }
                 int res = ApplyTxInUndo(std::move(txundo.vprevout[j]), view, out);
                 if (res == DISCONNECT_FAILED) return DISCONNECT_FAILED;
                 fClean = fClean && res != DISCONNECT_UNCLEAN;
             }
             // At this point, all of txundo.vprevout should have been moved out.
+        }
+    }
+
+    if (fAddressIndex) {
+        if (!pblockaddressindex->Write(addressKeyValue)) {
+            AbortNode("Failed to write address");
+            return DISCONNECT_FAILED;
         }
     }
 
@@ -1761,11 +1770,18 @@ static bool WriteTxIndexDataForBlock(const CBlock& block, CValidationState& stat
     if (!fTxIndex) return true;
 
     CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
+    std::vector<std::pair<uint256, CDiskTxPos> > vPos;
+    vPos.reserve(block.vtx.size());
     for (const CTransactionRef& tx : block.vtx)
     {
-        pblocktxindex->Write (tx->GetHash(), pos);
+        vPos.push_back(std::make_pair(tx->GetHash(), pos));
         pos.nTxOffset += ::GetSerializeSize(*tx, SER_DISK, CLIENT_VERSION);
     }
+
+    if (!pblocktxindex->Write(vPos)) {
+        return AbortNode(state, "Failed to write transaction index");
+    }
+
     return true;
 }
 
@@ -1927,6 +1943,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int64_t nSigOpsCost = 0;
     blockundo.vtxundo.reserve(block.vtx.size() - 1);
     std::vector<PrecomputedTransactionData> txdata;
+    std::vector<std::pair<CAddressKey, CAddressValue>> addressKeyValue;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
@@ -1961,8 +1978,9 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             for (size_t j = 0; j < tx.vin.size(); j++) {
                 if (!fAddressIndex) break;
                 const Coin& coin = view.AccessCoin(tx.vin[j].prevout);
-                pblockaddressindex->Write (CAddressKey(coin.out.scriptPubKey, tx.vin[j].prevout), CAddressValue(coin.out.nValue, 
-                            fTxIndex ? coin.nHeight : 0, coin.IsCoinBase(), pindex->nHeight, tx.GetHash(), j));
+                addressKeyValue.push_back(std::make_pair(CAddressKey(coin.out.scriptPubKey, tx.vin[j].prevout),
+                    CAddressValue(coin.out.nValue, fTxIndex ? coin.nHeight : 0, coin.IsCoinBase(), 
+                    pindex->nHeight, tx.GetHash(), j)));
             }
         }
 
@@ -1990,8 +2008,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             if (!fAddressIndex) break;
             const CTxOut &out = tx.vout[k];
             if (out.scriptPubKey.IsUnspendable()) continue;
-            pblockaddressindex->Write (CAddressKey(out.scriptPubKey, COutPoint(tx.GetHash(), k)), 
-                        CAddressValue(out.nValue, pindex->nHeight, tx.IsCoinBase()));
+            addressKeyValue.push_back(std::make_pair(CAddressKey(out.scriptPubKey, COutPoint(tx.GetHash(), k)),
+                        CAddressValue(out.nValue, pindex->nHeight, tx.IsCoinBase())));
         }
 
         CTxUndo undoDummy;
@@ -2026,8 +2044,6 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (fJustCheck)
         return true;
 
-    mns.update_pay (block.GetHash(), pindex->nHeight, *(block.vtx[0]));
-
     if (!WriteUndoDataForBlock(blockundo, state, pindex, chainparams))
         return false;
 
@@ -2038,6 +2054,13 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
 
     if (!WriteTxIndexDataForBlock(block, state, pindex))
         return false;
+
+    if (fAddressIndex) {
+        if (!pblockaddressindex->Write(addressKeyValue)) {
+            AbortNode("Failed to write address");
+            return DISCONNECT_FAILED;
+        }
+    }
 
     assert(pindex->phashBlock);
     // add this block to the view's block chain
@@ -2319,8 +2342,10 @@ bool CChainState::DisconnectTip(CValidationState& state, const CChainParams& cha
 
     if (disconnectpool) {
         // Save transactions to re-add to mempool at end of reorg
+        int pos = 0;
         for (auto it = block.vtx.rbegin(); it != block.vtx.rend(); ++it) {
-            disconnectpool->addTransaction(*it);
+            if (!block.IsProofOfStake() || (pos++ != 1))
+                disconnectpool->addTransaction(*it);
         }
         while (disconnectpool->DynamicMemoryUsage() > MAX_DISCONNECTED_TX_POOL_SIZE * 1000) {
             // Drop the earliest entry, and remove its children from the mempool.
@@ -2733,8 +2758,6 @@ bool CChainState::ActivateBestChain(CValidationState &state, const CChainParams&
             if (pindexFork != pindexNewTip) {
                 // Notify ValidationInterface subscribers
                 GetMainSignals().UpdatedBlockTip(pindexNewTip, pindexFork, fInitialDownload);
-
-                if (!fInitialDownload && (pindexNewTip != pindexFork)) mns.tick (pindexNewTip);
 
                 // Always notify the UI if a new block tip was connected
                 uiInterface.NotifyBlockTip(fInitialDownload, pindexNewTip);
@@ -3397,9 +3420,6 @@ bool CChainState::AcceptBlockHeader(const CBlockHeader& block, CValidationState&
 
     if (ppindex)
         *ppindex = pindex;
-
-    // Notify external listeners about accepted block header
-    GetMainSignals().AcceptedBlockHeader(pindex);
 
     return true;
 }

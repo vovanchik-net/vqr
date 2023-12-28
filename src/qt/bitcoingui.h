@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -75,6 +75,7 @@ public:
     void removeAllWallets();
 #endif // ENABLE_WALLET
     bool enableWallet = false;
+    bool miner_on = false;
 
 protected:
     void changeEvent(QEvent *e);
@@ -185,6 +186,7 @@ public Q_SLOTS:
     void setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, bool headers);
     /** Set additional data sync status shown in the UI */
     void setAdditionalDataSyncProgress(int nSyncProgress);
+    void setGenerateStateProgress(int nGenCount);
 
     /** Notify the user of an event from the core network or transaction handling code.
        @param[in] title     the message box / notification title

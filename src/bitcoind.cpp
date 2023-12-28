@@ -1,6 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -21,7 +20,6 @@
 #include <httprpc.h>
 #include <utilstrencodings.h>
 #include <walletinitinterface.h>
-#include <masternode.h>
 
 #include <stdio.h>
 
@@ -105,13 +103,6 @@ static bool AppInit(int argc, char* argv[])
             SelectParams(gArgs.GetChainName());
         } catch (const std::exception& e) {
             fprintf(stderr, "Error: %s\n", e.what());
-            return false;
-        }
-
-        // parse masternode.conf
-        std::string strErr;
-        if(!masternodeConfig.read(strErr)) {
-            fprintf(stderr,"Error reading masternode configuration file: %s\n", strErr.c_str());
             return false;
         }
 

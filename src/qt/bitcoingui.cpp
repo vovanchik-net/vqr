@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -479,6 +479,7 @@ void BitcoinGUI::setClientModel(ClientModel *_clientModel)
         setNumBlocks(m_node.getNumBlocks(), QDateTime::fromTime_t(m_node.getLastBlockTime()), m_node.getVerificationProgress(), false);
         connect(_clientModel, SIGNAL(numBlocksChanged(int,QDateTime,double,bool)), this, SLOT(setNumBlocks(int,QDateTime,double,bool)));
         connect(_clientModel, SIGNAL(additionalDataSyncProgressChanged(int)), this, SLOT(setAdditionalDataSyncProgress(int)));
+        connect(_clientModel, SIGNAL(generateStateChanged(int)), this, SLOT(setGenerateStateProgress(int)));
 
         // Receive and report messages from client model
         connect(_clientModel, SIGNAL(message(QString,QString,unsigned int)), this, SLOT(message(QString,QString,unsigned int)));
@@ -1183,7 +1184,11 @@ void BitcoinGUI::setEncryptionStatus(int status)
     {
     case WalletModel::Unencrypted:
         labelWalletEncryptionIcon->hide();
-        labelWalletEncryptionIcon2->hide();
+        if (miner_on) {
+            labelWalletEncryptionIcon2->show();
+            labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+            labelWalletEncryptionIcon2->setToolTip(tr("Wallet staking is active"));
+        } else labelWalletEncryptionIcon2->hide();
         encryptWalletAction->setChecked(false);
         changePassphraseAction->setEnabled(false);
         lockWalletAction->setEnabled(false);
@@ -1195,9 +1200,11 @@ void BitcoinGUI::setEncryptionStatus(int status)
         labelWalletEncryptionIcon->show();
         labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_open").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
         labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b>"));
-        labelWalletEncryptionIcon2->show();
-        labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-        labelWalletEncryptionIcon2->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b>"));
+        if (miner_on) {
+            labelWalletEncryptionIcon2->show();
+            labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+            labelWalletEncryptionIcon2->setToolTip(tr("Wallet staking is active"));
+        } else labelWalletEncryptionIcon2->hide();
         encryptWalletAction->setChecked(true);
         changePassphraseAction->setEnabled(true);
         lockWalletAction->setEnabled(true);
@@ -1209,9 +1216,11 @@ void BitcoinGUI::setEncryptionStatus(int status)
         labelWalletEncryptionIcon->show();
         labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_closed").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
         labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>locked</b>"));
-        labelWalletEncryptionIcon2->show();
-        labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-        labelWalletEncryptionIcon2->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b>"));
+        if (miner_on) {
+            labelWalletEncryptionIcon2->show();
+            labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+            labelWalletEncryptionIcon2->setToolTip(tr("Wallet staking is active"));
+        } else labelWalletEncryptionIcon2->hide();
         encryptWalletAction->setChecked(true);
         changePassphraseAction->setEnabled(true);
         lockWalletAction->setEnabled(true);
@@ -1223,9 +1232,7 @@ void BitcoinGUI::setEncryptionStatus(int status)
         labelWalletEncryptionIcon->show();
         labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_closed").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
         labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>locked</b>"));
-        labelWalletEncryptionIcon2->show();
-        labelWalletEncryptionIcon2->setPixmap(platformStyle->SingleColorIcon(":/icons/staking_inactive").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-        labelWalletEncryptionIcon2->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>locked</b>"));
+        labelWalletEncryptionIcon2->hide();
         encryptWalletAction->setChecked(true);
         changePassphraseAction->setEnabled(true);
         lockWalletAction->setEnabled(false);
@@ -1234,6 +1241,15 @@ void BitcoinGUI::setEncryptionStatus(int status)
         encryptWalletAction->setEnabled(false); // TODO: decrypt currently not supported
         break;
     }
+}
+
+void BitcoinGUI::setGenerateStateProgress(int nGenCount)
+{
+    if(!clientModel)
+        return;
+    
+    miner_on = nGenCount != 0;
+    updateWalletStatus();
 }
 
 void BitcoinGUI::updateWalletStatus()

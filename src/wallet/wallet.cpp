@@ -746,15 +746,15 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
         delete encrypted_batch;
         encrypted_batch = nullptr;
 
-        Lock();
-        Unlock(strWalletPassphrase);
+//        Lock();
+//        Unlock(strWalletPassphrase);
 
         // if we are using HD, replace the HD seed with a new one
-        if (IsHDEnabled()) {
-            SetHDSeed(GenerateNewSeed());
-        }
+//        if (IsHDEnabled()) {
+//            SetHDSeed(GenerateNewSeed());
+//        }
 
-        NewKeyPool();
+//        NewKeyPool();
         Lock();
 
         // Need to completely rewrite the wallet file; if we don't, bdb might keep
@@ -1340,8 +1340,17 @@ void CWallet::BlockConnected(const std::shared_ptr<const CBlock>& pblock, const 
 void CWallet::BlockDisconnected(const std::shared_ptr<const CBlock>& pblock) {
     LOCK2(cs_main, cs_wallet);
 
+    int pos = 0;
     for (const CTransactionRef& ptx : pblock->vtx) {
-        SyncTransaction(ptx);
+        if (pblock->IsProofOfStake() && (pos++ == 1)) {
+            auto it = mapWallet.find(ptx->GetHash());
+            if (it != mapWallet.end()) {
+                it->second.setAbandoned();
+                NotifyTransactionChanged(this, ptx->GetHash(), CT_UPDATED);
+            }
+        } else {
+            SyncTransaction(ptx);
+        }
     }
 }
 
@@ -3066,26 +3075,10 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
     return true;
 };
 
-bool getCoinInfo (std::map<uint256, uint64_t>& cache, const COutPoint& out, uint32_t& time) {
-    if (!cache.count(out.hash)) {
-        Coin coin;
-        if (pcoinsTip->GetCoin(out, coin) && (chainActive[coin.nHeight] != nullptr)) {
-            CBlockIndex* pi = chainActive[coin.nHeight];
-            if (pi) cache[out.hash] = pi->GetBlockTime();
-        }
-        if (!cache.count(out.hash)) return false;
-    }
-    time = cache[out.hash];
-    return true;
-};
-
 // pos: create coin stake transaction
 bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CMutableTransaction &txNew, CAmount& nPosReward)
 {
     const Consensus::Params& consensus = Params().GetConsensus();
-
-    CBlockIndex* pPrev = chainActive.Tip();
-    assert(pPrev != nullptr);
 
     LOCK2(cs_main, cs_wallet);
 
@@ -3101,16 +3094,16 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
     AvailableCoins(vCoins, true, nullptr, 0);
     LogPrint(BCLog::SELECTCOINS, "        Total select coin = %d\n", vCoins.size());
     CAmount nCredit = 0;
-    static std::map<uint256, uint64_t> cachedCoins; 
     CReserveKey key0(this);
     for (const COutput& inpcoin : vCoins) {
         if (!inpcoin.fSpendable) continue;
         CInputCoin pcoin = inpcoin.GetInputCoin(); 
         if (pcoin.txout.nValue < 10 * COIN) continue;
+        if (pcoin.txout.nValue == consensus.nMasternodeAmountLock * COIN) continue;
 
-        uint32_t time;
-        if (!getCoinInfo (cachedCoins, pcoin.outpoint, time)) continue;
-
+        CBlockIndex* pindex = LookupBlockIndex (inpcoin.tx->hashBlock);
+        if (!pindex) continue;
+        uint32_t time = pindex->nTime;
         if (time + consensus.nCoinAgeTick*3 > nCoinStakeTime - nSearchInterval) continue;
 
         bool fKernelFound = false;
@@ -3121,7 +3114,6 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
                 fKernelFound = true;
                 nCredit += pcoin.txout.nValue;
                 txNew.vin.push_back(CTxIn(pcoin.outpoint.hash, pcoin.outpoint.n));
-                cachedCoins.erase (pcoin.outpoint.hash);      // erase from cache
                 
                 CScript scriptPubKeyOut;
                 if (isStakeRepeatAddr) {
@@ -3150,12 +3142,12 @@ bool CWallet::CreateCoinStake (CBlockHeader& header, int64_t nSearchInterval, CM
         if (txNew.vin.size() > 31) break;
         if (pcoin.txout.nValue > 10 * COIN) continue;
         if (txNew.vin[0].prevout == pcoin.outpoint) continue;
-        uint32_t time; 
-        if (!getCoinInfo (cachedCoins, pcoin.outpoint, time)) continue;
+        CBlockIndex* pindex = LookupBlockIndex (inpcoin.tx->hashBlock);
+        if (!pindex) continue;
+        uint32_t time = pindex->nTime;
         if (time + consensus.nCoinAgeTick*3 > header.nTime) continue;
         txNew.vin.push_back(CTxIn(pcoin.outpoint.hash, pcoin.outpoint.n));
         nCredit += pcoin.txout.nValue;
-        cachedCoins.erase (pcoin.outpoint.hash);      // erase from cache
     }
 
     // Calculate coin age reward

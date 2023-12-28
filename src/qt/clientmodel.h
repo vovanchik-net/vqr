@@ -1,4 +1,5 @@
 // Copyright (c) 2011-2018 The Bitcoin Core developers
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -87,6 +88,7 @@ private:
     std::unique_ptr<interfaces::Handler> m_handler_notify_header_tip;
     std::unique_ptr<interfaces::Handler> m_handler_notify_masternodelist_changed;
     std::unique_ptr<interfaces::Handler> m_handler_notify_additional_data_sync_progess_changed;
+    std::unique_ptr<interfaces::Handler> m_handler_notify_generate_state_changed;
     OptionsModel *optionsModel;
     PeerTableModel *peerTableModel;
     BanTableModel *banTableModel;
@@ -101,6 +103,7 @@ Q_SIGNALS:
     void masternodeListChanged();
     void numBlocksChanged(int count, const QDateTime& blockDate, double nVerificationProgress, bool header);
     void additionalDataSyncProgressChanged(int nSyncProgress);
+    void generateStateChanged(int nGenCount);
     void mempoolSizeChanged(long count, size_t mempoolSizeInBytes);
     void networkActiveChanged(bool networkActive);
     void alertsChanged(const QString &warnings);

@@ -1,5 +1,4 @@
 // Copyright (c) 2011-2018 The Bitcoin Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -21,7 +20,6 @@
 #include <qt/splashscreen.h>
 #include <qt/utilitydialog.h>
 #include <qt/winshutdownmonitor.h>
-#include <masternode.h>
 
 #ifdef ENABLE_WALLET
 #include <qt/walletmodel.h>
@@ -623,14 +621,6 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(networkStyle->getAppName());
     // Re-initialize translations after changing application name (language in network-specific settings can be different)
     initTranslations(qtTranslatorBase, qtTranslator, translatorBase, translator);
-
-    /// 7a. parse masternode.conf
-    std::string strErr;
-    if(!masternodeConfig.read(strErr)) {
-        QMessageBox::critical(0, QObject::tr("Dash Core"),
-                              QObject::tr("Error reading masternode configuration file: %1").arg(strErr.c_str()));
-        return EXIT_FAILURE;
-    }
 
     /// 9. Main GUI initialization
     // Install global event filter that makes sure that long tooltips can be word-wrapped

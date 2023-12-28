@@ -2,12 +2,10 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <activemasternode.h>
 #include <instantx.h>
 #include <key.h>
 #include <validation.h>
 #include <masternode.h>
-#include <messagesigner.h>
 #include <net.h>
 #include <netmessagemaker.h>
 #include <protocol.h>
@@ -41,7 +39,7 @@ CInstantSend instantsend;
 // CInstantSend
 //
 
-void CInstantSend::ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman)
+bool CInstantSend::ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman)
 {
     // NOTE: NetMsgType::TXLOCKREQUEST is handled via ProcessMessage() in net_processing.cpp
 
@@ -52,15 +50,17 @@ void CInstantSend::ProcessMessage(CNode* pfrom, const std::string& strCommand, C
         pfrom->setAskFor.erase(nVoteHash);
 
         // Ignore any InstantSend messages until masternode list is synced
-        if (!masternodeSync.IsMasternodeListSynced()) return;
+        if (!masternodeSync.IsMasternodeListSynced()) return true;
 
         {
             LOCK(cs_instantsend);
             auto ret = mapTxLockVotes.emplace(nVoteHash, vote);
-            if (!ret.second) return;
+            if (!ret.second) return true;
         }
         ProcessNewTxLockVote(pfrom, vote, connman);
+        return true;
     }
+    return false;
 }
 
 bool CInstantSend::ProcessTxLockRequest(const CTxLockRequest& txLockRequest, CConnman& connman)
@@ -822,8 +822,7 @@ void CInstantSend::UpdatedBlockTip(const CBlockIndex *pindex)
     nCachedBlockHeight = pindex->nHeight;
 }
 
-void CInstantSend::BlockConnected(const std::shared_ptr<const CBlock> &block, const CBlockIndex *pindex, 
-            const std::shared_ptr<const std::vector<CTransactionRef>> &conflicted) {
+void CInstantSend::BlockConnected(const std::shared_ptr<const CBlock> &block, const CBlockIndex *pindex) {
     for (const auto& tx : block->vtx) {
         if (tx->IsCoinBase()) continue;
         LOCK2(cs_main, cs_instantsend);

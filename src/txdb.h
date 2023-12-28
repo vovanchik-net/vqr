@@ -119,6 +119,8 @@ public:
     bool ReadLastBlockFile(int &nFile);
     bool WriteReindexing(bool fReindexing);
     void ReadReindexing(bool &fReindexing);
+    bool WriteKey(int nn, const std::vector<unsigned char>& key);
+    bool ReadKey(int nn, std::vector<unsigned char>& key);
     bool WriteFlag(const std::string &name, bool fValue);
     bool ReadFlag(const std::string &name, bool &fValue);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex);
@@ -126,25 +128,19 @@ public:
 
 class CTxIndexDB : public CDBWrapper
 {
-private:
-    std::map<uint256, CDiskTxPos> Cache;
-    CCriticalSection CacheLock;
 public:
     explicit CTxIndexDB(bool fWipe);
-    bool Read (const uint256 &txid, CDiskTxPos &pos);
-    bool Write (const uint256 &txid, const CDiskTxPos &pos);
+    bool Read (const uint256& txid, CDiskTxPos& pos);
+    bool Write (const std::vector<std::pair<uint256, CDiskTxPos> >& vec);
     bool Flush ();
 };
 
 class CAddressIndexDB : public CDBWrapper
 {
-private:
-    std::map<CAddressKey, CAddressValue> Cache;
-    CCriticalSection CacheLock;
 public:
     explicit CAddressIndexDB(bool fWipe);
     bool Read (const CScript& script, std::map<CAddressKey, CAddressValue>& vec);
-    bool Write (const CAddressKey& key, const CAddressValue& value);
+    bool Write (const std::vector<std::pair<CAddressKey, CAddressValue>>& vec);
     bool Flush ();
 };
 

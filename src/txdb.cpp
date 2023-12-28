@@ -25,6 +25,7 @@ static const char DB_BLOCK_FILES = 'f';
 static const char DB_TXINDEX = 't';
 static const char DB_BLOCK_INDEX = 'b';
 static const char DB_ADDRESS = 'a';
+static const char DB_KEY = 'k';
 
 static const char DB_BEST_BLOCK = 'B';
 static const char DB_HEAD_BLOCKS = 'H';
@@ -167,6 +168,14 @@ void CBlockTreeDB::ReadReindexing(bool &fReindexing) {
     fReindexing = Exists(DB_REINDEX_FLAG);
 }
 
+bool CBlockTreeDB::WriteKey(int nn, const std::vector<unsigned char>& key) {
+    return Write(std::make_pair(DB_KEY, nn), key);
+}
+
+bool CBlockTreeDB::ReadKey(int nn, std::vector<unsigned char>& key) {
+    return Read(std::make_pair(DB_KEY, nn), key);
+}
+
 bool CBlockTreeDB::ReadLastBlockFile(int &nFile) {
     return Read(DB_LAST_BLOCK, nFile);
 }
@@ -302,41 +311,33 @@ bool CCoinsViewDB::Upgrade() {
 
 // CTxIndexDB
 
-CTxIndexDB::CTxIndexDB(bool fWipe) : Cache(), CacheLock(), CDBWrapper(GetBlocksDir() / "txindex", 32 << 20, false, fWipe) {
+CTxIndexDB::CTxIndexDB(bool fWipe) : CDBWrapper(GetBlocksDir() / "txindex", 32 << 20, false, fWipe) {
 }
 
-bool CTxIndexDB::Read (const uint256 &txid, CDiskTxPos &pos) {
-    LOCK(CacheLock);
-    if (Cache.count(txid) > 0) { pos = Cache[txid]; return true; } 
+bool CTxIndexDB::Read (const uint256& txid, CDiskTxPos& pos) {
     return CDBWrapper::Read(std::make_pair(DB_TXINDEX, txid), pos);
 }
 
-bool CTxIndexDB::Write (const uint256 &txid, const CDiskTxPos &pos) {
-    bool ret = true;
-    if (Cache.size() > 64000) ret = Flush ();
-    LOCK(CacheLock);
-    Cache[txid] = pos;
-    return ret;
+bool CTxIndexDB::Write (const std::vector<std::pair<uint256, CDiskTxPos> >& vec) {
+    CDBBatch batch(*this);
+    for (auto it=vec.begin(); it!=vec.end(); it++)
+        batch.Write(std::make_pair(DB_TXINDEX, it->first), it->second);
+    return WriteBatch(batch);
 }
 
 bool CTxIndexDB::Flush () {
-    LOCK(CacheLock);
     CDBBatch batch(*this);
-    for (auto& it : Cache)
-        batch.Write(std::make_pair(DB_TXINDEX, it.first), it.second);
-    bool ret = WriteBatch(batch);
-    Cache.clear();
-    return ret;
-};
+    batch.Write (DB_BEST_BLOCK, uint256());
+    return WriteBatch(batch, true);
+}
 
 // CAddressIndexDB
 // CScript, COutpoint  = value, height, spend_tx, spend_in, spend_height
 
-CAddressIndexDB::CAddressIndexDB(bool fWipe) : Cache(), CacheLock(), CDBWrapper(GetBlocksDir() / "addressindex", 32 << 20, false, fWipe) {
+CAddressIndexDB::CAddressIndexDB(bool fWipe) : CDBWrapper(GetBlocksDir() / "addressindex", 32 << 20, false, fWipe) {
 }
 
 bool CAddressIndexDB::Read (const CScript& script, std::map<CAddressKey, CAddressValue>& vec) {
-    LOCK(CacheLock);
     std::unique_ptr<CDBIterator> pcursor(NewIterator());
     pcursor->Seek(std::make_pair(DB_ADDRESS, CAddressKey(script, COutPoint())));
     while (pcursor->Valid()) {
@@ -353,36 +354,23 @@ bool CAddressIndexDB::Read (const CScript& script, std::map<CAddressKey, CAddres
             break;
         }
     }
-    for (const auto& it : Cache) {
-        if (it.first.script != script) continue;
-        if (it.second.height > 0) {
-            vec[it.first] = it.second;
-        } else {
-            vec.erase (it.first);
-        }
-    }
     return true;
 }
 
-bool CAddressIndexDB::Write (const CAddressKey& key, const CAddressValue& value) {
-    bool ret = true;
-    if (Cache.size() > 64000) ret = Flush ();
-    LOCK(CacheLock);
-    Cache[key] = value;
-    return ret;
-}
-
-bool CAddressIndexDB::Flush () {
-    LOCK(CacheLock);
+bool CAddressIndexDB::Write (const std::vector<std::pair<CAddressKey, CAddressValue>>& vec) {
     CDBBatch batch(*this);
-    for (auto& it : Cache) {
+    for (auto it : vec) {
         if (it.second.height == 0) {
             batch.Erase(std::make_pair(DB_ADDRESS, it.first));
         } else {
             batch.Write(std::make_pair(DB_ADDRESS, it.first), it.second);
         }
     }
-    bool ret = WriteBatch(batch);
-    Cache.clear();
-    return ret;
-};
+    return WriteBatch(batch);
+}
+
+bool CAddressIndexDB::Flush () {
+    CDBBatch batch(*this);
+    batch.Write (DB_BEST_BLOCK, uint256());
+    return WriteBatch(batch, true);
+}

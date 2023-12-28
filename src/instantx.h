@@ -87,7 +87,7 @@ private:
 public:
     CCriticalSection cs_instantsend;
 
-    void ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman);
+    bool ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman);
 
     bool ProcessTxLockRequest(const CTxLockRequest& txLockRequest, CConnman& connman);
     void Vote(const uint256& txHash, CConnman& connman);
@@ -118,8 +118,7 @@ public:
     void Relay(const uint256& txHash, CConnman& connman);
 
     void UpdatedBlockTip(const CBlockIndex *pindex);
-    void BlockConnected(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex, 
-        const std::shared_ptr<const std::vector<CTransactionRef>> &);
+    void BlockConnected(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex);
 
     std::string ToString();
 };

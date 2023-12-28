@@ -1,4 +1,5 @@
 // Copyright (c) 2011-2018 The Bitcoin Core developers
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -255,6 +256,12 @@ static void NotifyAdditionalDataSyncProgressChanged(ClientModel *clientmodel, in
                               Q_ARG(int, nSyncProgress));
 }
 
+static void NotifyGenerateStateChanged(ClientModel *clientmodel, int nGenCount)
+{
+    QMetaObject::invokeMethod(clientmodel, "generateStateChanged", Qt::QueuedConnection,
+                              Q_ARG(int, nGenCount));
+}
+
 void ClientModel::subscribeToCoreSignals()
 {
     // Connect signals to client
@@ -267,6 +274,8 @@ void ClientModel::subscribeToCoreSignals()
     m_handler_notify_header_tip = m_node.handleNotifyHeaderTip(boost::bind(BlockTipChanged, this, _1, _2, _3, _4, true));
     m_handler_notify_masternodelist_changed = m_node.handleNotifyMasternodeListChanged(boost::bind(NotifyMasternodeListChanged, this));
     m_handler_notify_additional_data_sync_progess_changed = m_node.handleNotifyAdditionalDataSyncProgressChanged(boost::bind(NotifyAdditionalDataSyncProgressChanged, this, _1));
+    m_handler_notify_generate_state_changed = m_node.handleNotifyGenerateStateChanged(boost::bind(NotifyGenerateStateChanged, this, _1));
+    m_node.initNotifyState();
 }
 
 void ClientModel::unsubscribeFromCoreSignals()

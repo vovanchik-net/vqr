@@ -1,9 +1,8 @@
 // Copyright (c) 2014-2019 The Dash Core developers
-// Copyright (c) 2021 Uladzimir (t.me/crypto_dev)
+// Copyright (c) 2023 Uladzimir (t.me/cryptadev)
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <activemasternode.h>
 #include <base58.h>
 #include <clientversion.h>
 #include <init.h>
@@ -359,7 +358,7 @@ UniValue masternode_dump (const JSONRPCRequest& request) {
     debug_log ("");
     debug_log ("");
     debug_log ("");
-    mns.dump("", [](std::string ss) { debug_log (ss); });
+    votes.dump("", [](std::string ss) { debug_log (ss); });
     debug_log ("*");
 
     return {};

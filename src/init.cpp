@@ -26,7 +26,6 @@
 #include <miner.h>
 #include <netbase.h>
 #include <net.h>
-#include <netfulfilledman.h>
 #include <net_processing.h>
 #include <policy/feerate.h>
 #include <policy/policy.h>
@@ -50,13 +49,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <activemasternode.h>
-#include <dsnotificationinterface.h>
 #include <governance.h>
 #include <instantx.h>
 #include <masternode.h>
-#include <messagesigner.h>
-#include <netfulfilledman.h>
 
 #ifdef ENABLE_WALLET
 #include <wallet/wallet.h>
@@ -1012,6 +1007,10 @@ bool AppInitParameterInteraction()
 
     // also see: InitParameterInteraction()
 
+    if (!fs::is_directory(GetBlocksDir(false))) {
+        return InitError(strprintf(_("Specified blocks directory \"%s\" does not exist."), gArgs.GetArg("-blocksdir", "").c_str()));
+    }
+
      // if using block pruning, then disallow txindex
     if (gArgs.GetArg("-prune", 0)) {
         if (gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX))
@@ -1713,21 +1712,6 @@ bool AppInitMain()
         vImportFiles.push_back(strFile);
     }
 
-    CBlockIndex *pi = chainActive.Tip();
-    if ((pi == nullptr) || (pi->pprev == nullptr)) {
-        fs::path oldblocksdir = GetDataDir() / "blocks";
-        if (fs::is_directory(oldblocksdir)) {
-            for (fs::directory_iterator it(oldblocksdir); it != fs::directory_iterator(); it++) {
-                if (fs::is_regular_file(*it) && it->path().filename().string().length() == 12 &&
-                                                it->path().filename().string().substr(0,3) == "blk" &&
-                                                it->path().filename().string().substr(8,4) == ".dat") {
-                    vImportFiles.push_back(it->path());
-                }
-            }
-            //LogPrintf("Need get\n");
-        }
-    }
-
     threadGroup.create_thread(boost::bind(&ThreadImport, vImportFiles));
 
     // Wait for genesis block to be processed
@@ -1747,28 +1731,14 @@ bool AppInitMain()
     }
 
     fMasternodeMode = gArgs.GetBoolArg("-masternode", false);
+    std::string strErr;
+    if (!masternodeConfig.read(strErr)) {
+        LogPrintf("Error reading masternode configuration file: %s\n", strErr.c_str());
+        return false;
+    }
 
 #ifdef ENABLE_WALLET
     LogPrintf("Using masternode config file %s\n", GetMasternodeConfigFile().string());
-
-    if ((GetWallets().size() > 0) && (masternodeConfig.getCount() > 0)) {
-        std::shared_ptr<CWallet> pwallet = GetWallets()[0];
-        LogPrintf("Locking Masternodes:\n");
-        uint256 mnTxHash;
-        uint32_t outputIndex;
-        for (const auto& mne : masternodeConfig.getEntries()) {
-            mnTxHash.SetHex(mne.getTxHash());
-            outputIndex = (uint32_t)atoi(mne.getOutputIndex());
-            COutPoint outpoint = COutPoint(mnTxHash, outputIndex);
-            // don't lock non-spendable outpoint (i.e. it's already spent or it's not from this wallet at all)
-            if(pwallet->IsMine(CTxIn(outpoint)) != ISMINE_SPENDABLE) {
-                LogPrintf("  %s %s - IS NOT SPENDABLE, was not locked\n", mne.getTxHash(), mne.getOutputIndex());
-                continue;
-            }
-            pwallet->LockCoin(outpoint);
-            LogPrintf("  %s %s - locked successfully\n", mne.getTxHash(), mne.getOutputIndex());
-        }
-    }
 #endif // ENABLE_WALLET
 
     if (masternodeConfig.getCount() == 0) fMasternodeMode = false;

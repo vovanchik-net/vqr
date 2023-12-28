@@ -81,8 +81,6 @@
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
 
-bool fMasternodeMode = false;
-
 const char * const BITCOIN_CONF_FILENAME = "vqr.conf";
 const char * const BITCOIN_PID_FILENAME = "vqr.pid";
 
@@ -441,6 +439,9 @@ bool ArgsManager::ParseParameters(int argc, const char* const argv[], std::strin
         }
     }
 
+    fs::path curr = fs::current_path();
+    if (fs::exists(curr / ".portable")) SoftSetArg("-datadir", curr.string());
+
     // we do not allow -includeconf from command line, so we clear it here
     auto it = m_override_args.find("-includeconf");
     if (it != m_override_args.end()) {
@@ -791,14 +792,6 @@ void ClearDatadirCache()
     pathCachedNetSpecific = fs::path();
     g_blocks_path_cached = fs::path();
     g_blocks_path_cache_net_specific = fs::path();
-}
-
-fs::path GetMasternodeConfigFile()
-{
-    fs::path pathConfigFile(gArgs.GetArg("-mnconf", "masternode.conf"));
-    if (!pathConfigFile.is_complete())
-        pathConfigFile = GetDataDir() / pathConfigFile;
-    return pathConfigFile;
 }
 
 fs::path GetConfigFile(const std::string& confPath)

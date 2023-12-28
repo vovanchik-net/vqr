@@ -113,6 +113,9 @@ public:
     /** Additional data sync progress changed */
     boost::signals2::signal<void (int nSyncProgress)> NotifyAdditionalDataSyncProgressChanged;
 
+    /** Generate State changed */
+    boost::signals2::signal<void (int nGenCount)> NotifyGenerateStateChanged;
+
     /** Banlist did change. */
     boost::signals2::signal<void (void)> BannedListChanged;
 };
